@@ -41,6 +41,7 @@ function newRun(n) {
 function show(id) {
   for (const s of ['menu', 'help', 'pause', 'end']) $(s).classList.toggle('hidden', s !== id);
   $('hud').classList.toggle('hidden', !(mode === 'play' || mode === 'pause'));
+  $('labels').classList.toggle('hidden', mode === 'menu');
 }
 
 // ---------- Menu & shop ----------
