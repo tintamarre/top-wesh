@@ -12,19 +12,20 @@ const MAXB = 1600;
 const MAXFX = 900;
 const MAXSHOT = 160;
 const MAXCOIN = 220;
-const HERO_LOOK = { medic: [0xf4f6fa, 0x35c46a, 0xd9dde6, 1.5], sniper: [0x2c5a3a, 0x1d3a26, 0x23302a, 1.5, 'rifle'], tank: [0xf2b01e, 0x8a909c, 0x5a4a1a, 2.1, 'shield'] };
+// Big sister (pink hoodie), the gamer (black hoodie, green cap), big brother (yellow puffer jacket)
+const HERO_LOOK = { medic: [0xff6fb5, 0xfafafa, 0x3a4a7a, 1.5], sniper: [0x23262e, 0x35d07f, 0x23262e, 1.5], tank: [0xf2b01e, 0xd8382f, 0x3a4a7a, 2.2] };
 
 // How each kind of enemy is drawn: colours of the soldier model, size, how many at most on screen
 const KINDS = {
-  grunt: { team: 0xe0352b, helmet: 0xff4136, trousers: 0x6b2a1a, scale: 1.08, max: MAXE },
-  runner: { team: 0xff9a1f, helmet: 0xffc94d, trousers: 0x7a3c0a, scale: 0.95, max: 600, lean: 0.35 },
-  brute: { team: 0x9c1f18, helmet: 0x4a0d09, trousers: 0x2a1512, scale: 1.9, max: 500 },
-  shield: { team: 0xb32a22, helmet: 0x8a909c, trousers: 0x3a3f4b, scale: 1.4, max: 300, extra: 'shield' },
-  bomber: { team: 0x2b2f3a, helmet: 0xffc928, trousers: 0x15171d, scale: 1.2, max: 300, extra: 'bomb' },
-  shooter: { team: 0x8e44e8, helmet: 0x5a1fb0, trousers: 0x2a1750, scale: 1.25, max: 200, extra: 'rifle' },
+  grunt: { body: 0xe0352b, head: 0x6b4a2b, legs: 0x3a3f4b, scale: 1.08, max: MAXE }, // supervisors
+  runner: { body: 0xff9a1f, head: 0xffe04d, legs: 0x2f6bd6, scale: 0.8, max: 600, lean: 0.35, extra: 'propeller' }, // little brothers
+  brute: { body: 0x9c1f18, head: 0x2a1512, legs: 0x9c1f18, scale: 1.9, max: 500, extra: 'whistle' }, // gym teachers
+  shield: { body: 0xb32a22, head: 0xcfd3da, legs: 0x3a3f4b, scale: 1.4, max: 300, extra: 'binder' }, // librarians
+  bomber: { body: 0x2b2f3a, head: 0x8a5a2b, legs: 0x15171d, scale: 1.2, max: 300, extra: 'test' }, // surprise tests
+  shooter: { body: 0x8e44e8, head: 0x2a1750, legs: 0x2a1750, scale: 1.25, max: 200, extra: 'ruler' }, // maths teachers
 };
-const POWER = { rage: { hex: 0xff8a1a, icon: '⚡' }, shield: { hex: 0x35d0ff, icon: '🛡️' }, bomb: { hex: 0x4a5266, icon: '💣' } };
-const BOSS_COLOR = { crusher: 0xf08a24, blaster: 0x2fae5a, titan: 0x8e44e8 };
+const POWER = { rage: { hex: 0xff8a1a, icon: '🥤' }, shield: { hex: 0x35d0ff, icon: '🎧' }, bomb: { hex: 0x8e44e8, icon: '🔊' } };
+const BOSS_COLOR = { crusher: 0x3f8fd6, blaster: 0x2fae5a, titan: 0x4a4466 };
 
 // fogN / fogF: where the fog starts and ends. hemiI, sunI, lampI: light intensities (the lamp is the squad's own light).
 const DAY = { fogN: 70, fogF: 190, hemiI: 1.25, sunI: 2.1, lampI: 0 };
@@ -35,7 +36,7 @@ const THEME = {
   night: { fogN: 20, fogF: 50, hemiI: 0.3, sunI: 0.25, lampI: 55, sky: 0x0a0f22, fog: 0x0a0f22, ground: '#4a4658', dots: ['#3a3748', '#5a566a', '#2f2c3c'], hemiG: 0x1c1e30 },
   snow: { ...DAY, sky: 0xcfe3f2, fog: 0xe4eef5, ground: '#eef3f7', dots: ['#d9e3ec', '#ffffff', '#c9d6e2'], hemiG: 0xc7d3de },
   city: { ...DAY, fogN: 60, fogF: 170, sky: 0xaec6de, fog: 0xc6d2de, ground: '#8b909c', dots: ['#7c818d', '#9a9fab', '#70757f'], hemiG: 0x7d8290 },
-  lava: { fogN: 45, fogF: 130, hemiI: 0.9, sunI: 1.3, lampI: 0, sky: 0x2b1512, fog: 0x4a1f14, ground: null, lava: 0xf04a10, hemiG: 0xff6a2a },
+  lava: { fogN: 45, fogF: 130, hemiI: 0.9, sunI: 1.3, lampI: 0, sky: 0x2b1512, fog: 0x4a1f14, ground: null, lava: 0xd9480f, hemiG: 0xff6a2a },
 };
 for (const th of Object.values(THEME)) Object.assign(th, { cSky: new THREE.Color(th.sky), cFog: new THREE.Color(th.fog), cHemi: new THREE.Color(th.hemiG) });
 const TRANSITION = 50; // length of road over which one scenery fades into the next
@@ -51,26 +52,42 @@ function paint(geo, hex) {
   return geo;
 }
 
-// One merged low-poly soldier, gun pointing +z, feet at y=0.
-function soldierGeometry(team, helmet, trousers, extra) {
+// One merged low-poly character, facing +z, feet at y=0.
+// Teens (the squad): hoodie, cap worn backwards, backpack, a toy blaster in the hand.
+// Grown-ups (everyone else): jacket, hair, glasses, tie, a clipboard, or what `extra` gives them.
+function figure({ body, head, legs, teen = false, extra }) {
   const parts = [];
   const add = (g, hex, x, y, z) => { g.translate(x, y, z); parts.push(paint(g, hex)); };
-  add(new THREE.BoxGeometry(0.09, 0.2, 0.1), trousers, -0.065, 0.1, 0);
-  add(new THREE.BoxGeometry(0.09, 0.2, 0.1), trousers, 0.065, 0.1, 0);
-  add(new THREE.CylinderGeometry(0.13, 0.15, 0.27, 8), team, 0, 0.33, 0);
+  add(new THREE.BoxGeometry(0.09, 0.2, 0.1), legs, -0.065, 0.1, 0);
+  add(new THREE.BoxGeometry(0.09, 0.2, 0.1), legs, 0.065, 0.1, 0);
+  add(new THREE.CylinderGeometry(0.13, 0.15, 0.27, 8), body, 0, 0.33, 0);
   add(new THREE.SphereGeometry(0.115, 8, 6), 0xf2c29b, 0, 0.56, 0);
-  const h = new THREE.SphereGeometry(0.135, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
-  add(h, helmet, 0, 0.585, 0);
-  add(new THREE.CylinderGeometry(0.15, 0.15, 0.025, 8), helmet, 0, 0.59, 0);
-  add(new THREE.BoxGeometry(0.05, 0.06, 0.3), 0x2b2f3a, 0.1, 0.36, 0.12);
-  add(new THREE.BoxGeometry(0.06, 0.06, 0.16), team, 0.1, 0.35, 0.03);
-  if (extra === 'shield') {
-    add(new THREE.BoxGeometry(0.5, 0.56, 0.05), 0x9aa1ad, 0, 0.34, 0.27);
-    add(new THREE.BoxGeometry(0.5, 0.1, 0.06), 0xd8382f, 0, 0.4, 0.275);
-  } else if (extra === 'bomb') {
-    add(new THREE.SphereGeometry(0.17, 8, 6), 0xd8382f, 0, 0.36, -0.2);
-    add(new THREE.CylinderGeometry(0.03, 0.03, 0.12, 5), 0xffe04d, 0, 0.56, -0.2);
-  } else if (extra === 'rifle') add(new THREE.BoxGeometry(0.04, 0.05, 0.5), 0x15171d, 0.1, 0.38, 0.3);
+  add(new THREE.SphereGeometry(0.135, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), head, 0, 0.585, 0);
+  if (teen) {
+    add(new THREE.BoxGeometry(0.2, 0.025, 0.14), head, 0, 0.6, -0.17); // cap visor, at the back
+    add(new THREE.BoxGeometry(0.18, 0.2, 0.08), legs, 0, 0.34, -0.16); // backpack
+    add(new THREE.BoxGeometry(0.05, 0.07, 0.22), 0x35d07f, 0.1, 0.36, 0.14); // toy blaster
+    add(new THREE.BoxGeometry(0.05, 0.1, 0.05), 0xff8a1a, 0.1, 0.3, 0.08);
+  } else {
+    add(new THREE.BoxGeometry(0.2, 0.035, 0.03), 0x15171d, 0, 0.57, 0.105); // glasses
+    add(new THREE.BoxGeometry(0.05, 0.2, 0.02), 0xfafafa, 0, 0.36, 0.14); // shirt and tie
+    add(new THREE.BoxGeometry(0.03, 0.16, 0.025), 0x2b2f3a, 0, 0.35, 0.15);
+    if (!extra) add(new THREE.BoxGeometry(0.16, 0.2, 0.02), 0xf5f1e3, 0.09, 0.34, 0.17); // clipboard
+  }
+  if (extra === 'binder') {
+    // A huge ring binder held in front
+    add(new THREE.BoxGeometry(0.5, 0.56, 0.06), 0x2f6bd6, 0, 0.34, 0.27);
+    add(new THREE.BoxGeometry(0.44, 0.5, 0.07), 0xfafafa, 0.02, 0.34, 0.27);
+    add(new THREE.BoxGeometry(0.5, 0.56, 0.02), 0x2f6bd6, 0, 0.34, 0.31);
+  } else if (extra === 'test') {
+    // A pile of surprise tests carried overhead
+    add(new THREE.BoxGeometry(0.34, 0.14, 0.26), 0xfafafa, 0, 0.78, 0);
+    add(new THREE.BoxGeometry(0.1, 0.02, 0.1), 0xe0352b, 0.08, 0.86, 0.04);
+  } else if (extra === 'ruler') add(new THREE.BoxGeometry(0.04, 0.03, 0.55), 0xffd23a, 0.1, 0.4, 0.28);
+  else if (extra === 'whistle') {
+    add(new THREE.BoxGeometry(0.28, 0.04, 0.02), 0xfafafa, 0, 0.3, 0.145); // tracksuit stripe
+    add(new THREE.BoxGeometry(0.06, 0.05, 0.05), 0xffd23a, 0, 0.46, 0.13);
+  } else if (extra === 'propeller') add(new THREE.BoxGeometry(0.26, 0.02, 0.05), 0x35d07f, 0, 0.73, 0);
   return mergeGeometries(parts);
 }
 
@@ -120,22 +137,21 @@ export class Renderer {
 
     // Instanced crowds
     const vc = this.mats.vc;
-    this.players = new THREE.InstancedMesh(soldierGeometry(0x2f7bf5, 0x3a8cff, 0x1d3f8a), vc, MAXP);
+    this.players = new THREE.InstancedMesh(figure({ body: 0x2f7bf5, head: 0x8fd6ff, legs: 0x1d3f8a, teen: true }), vc, MAXP);
     this.kinds = {};
-    for (const [id, K] of Object.entries(KINDS)) this.kinds[id] = { ...K, n: 0, mesh: new THREE.InstancedMesh(soldierGeometry(K.team, K.helmet, K.trousers, K.extra), vc, K.max) };
-    // Spiked iron ball
+    for (const [id, K] of Object.entries(KINDS)) this.kinds[id] = { ...K, n: 0, mesh: new THREE.InstancedMesh(figure(K), vc, K.max) };
+    // The giant ball of crumpled homework
     {
-      const parts = [paint(new THREE.IcosahedronGeometry(1, 1), 0x4a4f5c)];
-      const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1], [0.7, 0.7, 0], [-0.7, 0.7, 0], [0.7, -0.7, 0], [-0.7, -0.7, 0], [0, 0.7, 0.7], [0, -0.7, 0.7], [0, 0.7, -0.7], [0, -0.7, -0.7]];
-      const up = new THREE.Vector3(0, 1, 0);
-      for (const d of dirs) {
-        const c = new THREE.ConeGeometry(0.2, 0.5, 5);
-        const dv = new THREE.Vector3(...d).normalize();
-        c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dv));
-        c.translate(dv.x * 1.15, dv.y * 1.15, dv.z * 1.15);
-        parts.push(paint(c, 0xc9ced8));
-      }
-      this.kinds.boulder = { scale: 1, max: 80, n: 0, mesh: new THREE.InstancedMesh(mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g))), vc, 80) };
+      const g = new THREE.IcosahedronGeometry(1, 2).toNonIndexed();
+      const pos = g.attributes.position;
+      const crumple = (x, y, z) => 0.86 + 0.24 * Math.abs(Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453 % 1);
+      for (let i = 0; i < pos.count; i++) { const k = crumple(pos.getX(i), pos.getY(i), pos.getZ(i)); pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k, pos.getZ(i) * k); }
+      g.computeVertexNormals();
+      // Lines of handwriting: some faces are bluish
+      const c = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i += 3) { const ink = (i / 3) % 5 === 0; for (let j = 0; j < 3; j++) c.set(ink ? [0.62, 0.7, 0.9] : [0.97, 0.96, 0.92], (i + j) * 3); }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      this.kinds.boulder = { scale: 1, max: 80, n: 0, mesh: new THREE.InstancedMesh(g, vc, 80) };
     }
     for (const m of [this.players, ...Object.values(this.kinds).map((K) => K.mesh)]) {
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -145,7 +161,7 @@ export class Renderer {
       this.scene.add(m);
     }
     // Enemy projectiles
-    this.orbs = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b2f }), MAXSHOT);
+    this.orbs = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff6e0 }), MAXSHOT); // chalk
     this.orbGlow = new THREE.InstancedMesh(new THREE.SphereGeometry(1.7, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff7a3d, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }), MAXSHOT);
     for (const m of [this.orbs, this.orbGlow]) { m.frustumCulled = false; m.count = 0; this.scene.add(m); }
     // Coins to pick up, and the lamp of the night levels
@@ -157,8 +173,8 @@ export class Renderer {
     this.scene.add(this.lamp);
     // Heroes walking with the squad
     this.heroes = {};
-    for (const [id, [team, helmet, trousers, scale, extra]] of Object.entries(HERO_LOOK)) {
-      const m = new THREE.Mesh(soldierGeometry(team, helmet, trousers, extra), vc);
+    for (const [id, [body, head, legs, scale]] of Object.entries(HERO_LOOK)) {
+      const m = new THREE.Mesh(figure({ body, head, legs, teen: true }), vc);
       m.scale.setScalar(scale);
       m.castShadow = true;
       m.visible = false;
@@ -526,16 +542,18 @@ export class Renderer {
         const track = new THREE.Mesh(new THREE.BoxGeometry(h.amp * 2 + h.r * 2, 0.03, 0.22), m.dark);
         track.position.set(h.x0, 0.016, -h.z);
         G.add(track);
+        // A giant fidget spinner
         const grp = new THREE.Group();
-        const disc = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.86, h.r * 0.86, 0.07, 28), m.metal);
-        const hub = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.32, h.r * 0.32, 0.12, 14), m.red);
-        grp.add(disc, hub);
-        for (let i = 0; i < 12; i++) {
-          const a = (i / 12) * Math.PI * 2;
-          const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.3, 4), m.white);
-          tooth.position.set(Math.cos(a) * h.r * 0.93, 0, Math.sin(a) * h.r * 0.93);
-          tooth.rotation.set(0, -a, -Math.PI / 2 - 0.5);
-          grp.add(tooth);
+        const teal = new THREE.MeshLambertMaterial({ color: 0x19c3c9 });
+        grp.add(new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.42, h.r * 0.42, 0.12, 16), teal));
+        grp.add(new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.2, h.r * 0.2, 0.2, 12), m.white));
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2;
+          const lobe = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.4, h.r * 0.4, 0.12, 16), teal);
+          lobe.position.set(Math.cos(a) * h.r * 0.6, 0, Math.sin(a) * h.r * 0.6);
+          const bearing = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.22, h.r * 0.22, 0.16, 12), m.metal);
+          bearing.position.copy(lobe.position);
+          grp.add(lobe, bearing);
         }
         grp.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         grp.position.set(h.x, 0.3, -h.z);
@@ -573,8 +591,15 @@ export class Renderer {
       }
     }
     if (spikes.length) {
-      const sm = new THREE.InstancedMesh(new THREE.ConeGeometry(0.11, 0.5, 5), m.metal, spikes.length);
-      spikes.forEach(([x, z], i) => sm.setMatrixAt(i, this.m4.makeTranslation(x, 0.3, -z)));
+      // Toy bricks left on the floor: everybody knows what stepping on one feels like
+      const brick = mergeGeometries([new THREE.BoxGeometry(0.3, 0.2, 0.3).translate(0, 0.1, 0), new THREE.CylinderGeometry(0.08, 0.08, 0.07, 8).translate(0, 0.23, 0)]);
+      const sm = new THREE.InstancedMesh(brick, m.white, spikes.length);
+      const hues = [0xe0352b, 0xffc928, 0x2f7bf5, 0x35b46a];
+      spikes.forEach(([x, z], i) => {
+        this.e.set(0, (i * 1.7) % 3, 0);
+        sm.setMatrixAt(i, this.m4.compose(this.v.set(x + Math.sin(i * 7.1) * 0.08, 0.06, -z + Math.cos(i * 3.3) * 0.08), this.q.setFromEuler(this.e), this.s.set(1, 1, 1)));
+        sm.setColorAt(i, this.tmpC.setHex(hues[(i * 7) % 4]));
+      });
       sm.castShadow = true;
       G.add(sm);
     }
@@ -705,33 +730,32 @@ export class Renderer {
     const m = this.mats;
     const box = (w, h, d, mat, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
     const sph = (r, mat, x, y, z) => { const o = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
-    // "Crusher": a squat orange mech with a red visor and hydraulic fists
-    const orange = new THREE.MeshLambertMaterial({ color: BOSS_COLOR[B.type] ?? 0xf08a24 });
-    const steel = m.metal;
+    // A giant grown-up: the Dad in a polo shirt, the Teacher in a cardigan, the Principal in a suit
+    const orange = new THREE.MeshLambertMaterial({ color: BOSS_COLOR[B.type] ?? 0x3f8fd6 });
+    const steel = m.skin;
+    const jeans = new THREE.MeshLambertMaterial({ color: B.type === 'titan' ? 0x2b2838 : 0x34496b });
     const visor = new THREE.MeshBasicMaterial({ color: 0xff2a1f });
-    const legs = [box(0.6, 1.1, 0.75, steel, -0.55, 0.55, 0), box(0.6, 1.1, 0.75, steel, 0.55, 0.55, 0)];
+    const legs = [box(0.6, 1.1, 0.75, jeans, -0.55, 0.55, 0), box(0.6, 1.1, 0.75, jeans, 0.55, 0.55, 0)];
     box(0.8, 0.25, 1.0, m.dark, -0.55, 0.12, 0.1);
     box(0.8, 0.25, 1.0, m.dark, 0.55, 0.12, 0.1);
-    box(1.7, 0.4, 1.1, m.dark, 0, 1.25, 0); // hips
+    box(1.7, 0.4, 1.1, jeans, 0, 1.25, 0); // hips
     box(2.4, 1.5, 1.5, orange, 0, 2.15, 0); // body
-    box(1.5, 0.9, 0.12, m.dark, 0, 2.1, 0.78); // chest plate
-    box(1.1, 0.12, 0.14, m.hazard, 0, 2.62, 0.8);
-    sph(0.18, visor, -0.4, 2.1, 0.86);
-    sph(0.18, visor, 0.4, 2.1, 0.86);
-    box(1.0, 0.7, 0.9, orange, 0, 3.2, 0.1); // head
-    box(0.85, 0.2, 0.06, visor, 0, 3.25, 0.57); // visor
-    box(0.06, 0.6, 0.06, m.dark, 0.35, 3.8, -0.1); // antenna
-    sph(0.09, visor, 0.35, 4.12, -0.1);
+    box(0.7, 1.1, 0.12, m.white, 0, 2.25, 0.72); // shirt
+    box(0.26, 0.95, 0.06, m.red, 0, 2.2, 0.8); // tie
+    box(1.0, 0.7, 0.9, m.skin, 0, 3.2, 0.1); // head
+    box(1.04, 0.2, 0.94, m.dark, 0, 3.62, 0.08); // hair
+    for (const sx of [-1, 1]) box(0.36, 0.22, 0.06, m.dark, sx * 0.24, 3.28, 0.57); // glasses
+    box(0.12, 0.05, 0.06, m.dark, 0, 3.3, 0.57);
+    if (B.type === 'crusher') box(0.56, 0.12, 0.06, m.dark, 0, 3.02, 0.57); // moustache
     if (B.type !== 'crusher') {
-      // Shoulder cannons
+      // Megaphones on the shoulders
       for (const sx of [-1, 1]) {
-        box(0.5, 0.5, 0.9, m.dark, sx * 0.85, 3.25, 0.15);
-        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.9, 10), steel);
-        barrel.rotation.x = Math.PI / 2;
-        barrel.position.set(sx * 0.85, 3.25, 0.95);
-        barrel.castShadow = true;
-        g.add(barrel);
-        sph(0.13, visor, sx * 0.85, 3.25, 1.4);
+        const horn = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.14, 0.9, 12, 1, true), new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+        horn.rotation.x = Math.PI / 2;
+        horn.position.set(sx * 0.95, 3.3, 0.75);
+        horn.castShadow = true;
+        g.add(horn);
+        box(0.3, 0.3, 0.5, m.red, sx * 0.95, 3.3, 0.15);
       }
     }
     const arms = [];
@@ -741,10 +765,12 @@ export class Renderer {
       const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.48, 12, 8), orange);
       const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.3, 8), steel);
       arm.position.y = -0.7;
-      const fist = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.75, 0.85), m.dark);
+      const fist = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.75, 0.85), m.skin);
       fist.position.y = -1.5;
-      const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 0.9), m.hazard);
-      knuckles.position.y = -1.85;
+      // The dreaded flip-flop, in the right hand of those who smash
+      const flip = sx > 0 && B.type !== 'blaster';
+      const knuckles = new THREE.Mesh(flip ? new THREE.BoxGeometry(0.75, 0.14, 2) : new THREE.BoxGeometry(0.2, 0.1, 0.2), flip ? new THREE.MeshLambertMaterial({ color: 0x19c3c9 }) : m.skin);
+      knuckles.position.set(0, flip ? -1.95 : -1.6, flip ? 0.5 : 0);
       pivot.add(shoulder, arm, fist, knuckles);
       pivot.traverse((o) => (o.castShadow = true));
       g.add(pivot);
@@ -820,9 +846,9 @@ export class Renderer {
         case 'kill': {
           if (kills++ > 40) break;
           const K = KINDS[e.kind];
-          if (!K) { this.burst(e.x, 1, e.z, 0x9aa1ad, 14, 5, 1.5, 0.6); break; }
+          if (!K) { this.burst(e.x, 1, e.z, 0xfafafa, 16, 5, 1.3, 0.7); break; }
           const bigOne = K.scale > 1.15;
-          this.burst(e.x, 0.4, e.z, K.team, bigOne ? 9 : 3, 2.5, bigOne ? 1.5 : 0.8, 0.45);
+          this.burst(e.x, 0.4, e.z, K.body, bigOne ? 9 : 3, 2.5, bigOne ? 1.5 : 0.8, 0.45);
           break;
         }
         case 'lost':
@@ -837,7 +863,7 @@ export class Renderer {
           this.burst(e.x, 0.6, e.z, 0x4fe08a, 14, 3.5, 0.9, 0.6);
           break;
         case 'tankBlock':
-          this.float('BLOCKED ' + e.n, sim.squad.x, 2.4, sim.squad.z + sim.squad.Rz, 'heal');
+          this.float('NOPE! ' + e.n, sim.squad.x, 2.4, sim.squad.z + sim.squad.Rz, 'heal');
           this.burst(e.x, 0.8, e.z, 0xf2b01e, 14, 4, 1.1, 0.5);
           break;
         case 'snipe': {
@@ -873,10 +899,10 @@ export class Renderer {
           this.burst(e.x, 3.2, e.z, 0xff7a3d, 14, 4, 1, 0.4);
           break;
         case 'summon':
-          this.float('REINFORCEMENTS!', e.x, 2.5, e.z - 3, 'bad small');
+          this.float('BACKUP!', e.x, 2.5, e.z - 3, 'bad small');
           break;
         case 'enrage':
-          this.float('ENRAGED!', e.x, 5.5, e.z, 'bad');
+          this.float("THAT'S IT!!", e.x, 5.5, e.z, 'bad');
           this.burst(e.x, 2.5, e.z, 0xff2a1f, 30, 7, 1.5, 0.8);
           this.shake = 0.5;
           break;
@@ -995,7 +1021,7 @@ export class Renderer {
     this.orbs.instanceMatrix.needsUpdate = this.orbGlow.instanceMatrix.needsUpdate = true;
 
     // Saws and moving gates
-    for (const sw of this.saws) { sw.grp.position.x = sw.h.x; sw.grp.rotation.y = -t * 14; }
+    for (const sw of this.saws) { sw.grp.position.x = sw.h.x; sw.grp.rotation.y = -t * 11; }
     for (const w of this.walls) { w.pair[0].position.x = w.h.c - w.h.half; w.pair[1].position.x = w.h.c + w.h.half; }
 
     // Coins

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#1f5fd6" />
-    <meta name="description" content="Top Wesh: grow your squad through the gates, dodge saws and spikes, pick your gun, shoot down the red horde and the mech at the end. A squad-runner shooter in your browser." />
+    <meta name="description" content="Top Wesh: lead a gang of teenagers through the gates, dodge toy bricks and giant fidget spinners, soak the supervisors with water guns and face the Dad and his flip-flop. A squad-runner in your browser." />
     <title>Top Wesh</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='14' width='56' height='36' rx='9' fill='%231f5fd6'/%3E%3Ctext x='32' y='42' font-family='Arial Black,Arial' font-weight='900' font-size='26' text-anchor='middle' fill='white'%3E+1%3C/text%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,7 +26,7 @@
         <div class="coins"><span class="coin"></span><span id="hudCoins">0</span></div>
       </div>
       <div id="hudWeapon" class="weapon-chip">Pistol</div>
-      <div id="bossBar" class="boss-bar hidden"><span id="bossName">CRUSHER</span><div><i id="bossFill"></i></div></div>
+      <div id="bossBar" class="boss-bar hidden"><span id="bossName">THE DAD</span><div><i id="bossFill"></i></div></div>
       <div id="hint" class="hint">◀ drag to move ▶</div>
     </div>
 
@@ -56,17 +56,17 @@
       <div class="panel">
         <h2>How to play</h2>
         <ul class="help">
-          <li><b>Drag</b> left and right (or <kbd>←</kbd> <kbd>→</kbd>, <kbd>A</kbd> <kbd>D</kbd>) to steer your squad. It runs and shoots by itself.</li>
-          <li>Walk through <b class="t-blue">blue</b> and <b class="t-yellow">yellow</b> gates to grow your squad. Avoid the <b class="t-red">red</b> ones, or shoot them until they turn blue.</li>
-          <li>In the three-lane sections, pick your lane: a row of <b class="t-blue">+1</b>, the red horde, or a barrier to break with big <b class="t-yellow">+</b> gates behind it.</li>
-          <li>Shoot <b>jars</b> to free prisoners, and <b>barrels</b> and <b>ice crates</b> for a gun. When two guns stand side by side, the one you break is the one you get: Shotgun and Flamer are short and wide, Rifle and Laser go through the ranks, Rockets explode.</li>
-          <li>Glowing boxes: <b>⚡ rage</b> doubles your fire, <b>🛡️ shield</b> stops every loss for a few seconds, <b>💣 airstrike</b> clears the road.</li>
-          <li>Step around <b class="t-red">spike strips</b>, <b class="t-red">saw blades</b>, closing <b>walls</b>, rolling <b>iron balls</b> (bullets bounce off) and the red <b class="t-red">orbs</b> fired by purple marksmen.</li>
-          <li>Red soldiers trade one for one. <b>Shield bearers</b> stop bullets, <b>bombers</b> blow up their friends when shot early, orange <b>runners</b> are fast.</li>
-          <li>Three bosses: the Crusher smashes the ground, the Blaster fires fans of orbs, the Titan does both. Below half health they get angry.</li>
+          <li>You lead a gang of teenagers. <b>Drag</b> left and right (or <kbd>←</kbd> <kbd>→</kbd>, <kbd>A</kbd> <kbd>D</kbd>) to steer it. It runs and shoots by itself, and nobody gets hurt: a soaked grown-up just goes home.</li>
+          <li>Walk through <b class="t-blue">blue</b> and <b class="t-yellow">yellow</b> gates to call more friends. Avoid the <b class="t-red">red</b> ones, or shoot them until they turn blue.</li>
+          <li>Shoot <b>jars</b> to get friends out of detention, and <b>barrels</b> and <b>ice crates</b> for a new toy. When two stand side by side, the one you break is the one you get: Party popper and Deo spray are short and wide, Foam darts and Laser pointer go through the ranks, Water balloons splash.</li>
+          <li>Glowing boxes: <b>🥤 energy drink</b> doubles your fire, <b>🎧 headphones</b> let nothing reach you for a few seconds, <b>🔊 bass drop</b> clears the road.</li>
+          <li>Step around <b class="t-red">toy bricks</b> on the floor, giant <b class="t-red">fidget spinners</b>, closing <b>walls</b>, rolling balls of <b>homework</b> (nothing stops homework) and the <b>chalk</b> thrown by the maths teachers in purple.</li>
+          <li>Each supervisor in red sends one friend home. <b>Librarians</b> hide behind a binder, <b>surprise tests</b> blow up in a cloud of paper, <b>little brothers</b> in orange are fast, <b>gym teachers</b> are big.</li>
+          <li>Three bosses: the Dad and his flip-flop, the Teacher who throws chalk in fans, the Principal who does both. Below half health they have had enough.</li>
+          <li>In the three-lane sections and at the forks, pick your side: easy with small gates, or guarded with a big reward.</li>
           <li>Coins lie on the road, often where it is risky. After every third level a <b class="t-yellow">coin rush</b> has nothing but coins and traps.</li>
-          <li>Finish with 80% of your soldiers for <b class="t-yellow">★★★</b>. The first time you clear a level you pick a <b>perk</b> that stays for good.</li>
-          <li>Spend your coins on Recruits, Firepower and Fire rate, and on <b>heroes</b>: the Medic revives, the Sniper picks off the dangerous ones, the Tank takes a heavy blow.</li>
+          <li>Finish with 80% of the gang for <b class="t-yellow">★★★</b>. The first time you clear a level you pick a <b>perk</b> that stays for good.</li>
+          <li>Spend your coins on The gang, Attitude and Sugar, and on <b>heroes</b>: Big sister brings friends back, The gamer tags the most annoying grown-up, Big brother takes a telling-off for you.</li>
         </ul>
         <button class="btn" data-close>Got it</button>
       </div>
@@ -78,7 +78,7 @@
         <h2>Levels</h2>
         <div id="levelsTotal" class="end-stats"></div>
         <div id="levelGrid" class="level-grid"></div>
-        <div class="end-stats"><small>★★★ for keeping 80% of your soldiers, ★★ for 55%. New stars pay coins.</small></div>
+        <div class="end-stats"><small>★★★ for keeping 80% of the gang, ★★ for 55%. New stars pay coins.</small></div>
         <button class="btn ghost" data-close>Back</button>
       </div>
     </div>

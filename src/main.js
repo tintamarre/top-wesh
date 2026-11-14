@@ -92,7 +92,7 @@ function renderShop() {
   heroes.innerHTML = '';
   for (const h of HEROES) {
     const own = !!save.heroes[h.id];
-    heroes.appendChild(card(`<span class="ico">${h.icon}</span><span class="nm">${h.name}</span><span class="ds">${h.desc}</span>${own ? '<span class="cost own">In the squad</span>' : `<span class="cost"><span class="coin"></span>${h.cost}</span>`}`, !own && h.cost > save.coins, (b) => {
+    heroes.appendChild(card(`<span class="ico">${h.icon}</span><span class="nm">${h.name}</span><span class="ds">${h.desc}</span>${own ? '<span class="cost own">In the gang</span>' : `<span class="cost"><span class="coin"></span>${h.cost}</span>`}`, !own && h.cost > save.coins, (b) => {
       if (own) return;
       if (save.coins < h.cost) return shake(b);
       save.coins -= h.cost;
@@ -221,10 +221,10 @@ function endLevel() {
       bonusNext = n % 3 === 0;
     }
     earned = Math.round((Math.floor(sim.coins) + (won ? 10 * n + Math.floor(sim.squad.count / 10) : 0) + starBonus) * mul);
-    $('endTitle').textContent = won ? 'VICTORY!' : 'DEFEATED';
+    $('endTitle').textContent = won ? 'WESH !' : 'GROUNDED';
     $('endStats').innerHTML = won
-      ? `Level ${n} cleared<br>${sim.squad.count} soldiers left · ${sim.lostTotal} lost<br>${sim.kills} enemies down with the ${sim.weaponInfo.name}${starBonus ? `<br>New stars: +${starBonus} coins` : ''}${stars < 3 ? '<br><small>Keep 80% of your soldiers for ★★★</small>' : ''}`
-      : `Level ${n}<br>Best squad ${sim.peak} · ${sim.kills} enemies down<br>Upgrade your squad and try again!`;
+      ? `Level ${n} cleared<br>${sim.squad.count} friends still there · ${sim.lostTotal} sent home<br>${sim.kills} grown-ups soaked with the ${sim.weaponInfo.name}${starBonus ? `<br>New stars: +${starBonus} coins` : ''}${stars < 3 ? '<br><small>Keep 80% of the gang for ★★★</small>' : ''}`
+      : `Level ${n}<br>Biggest gang ${sim.peak} · ${sim.kills} grown-ups soaked<br>Everybody got sent home. Try again!`;
   }
   const good = won || bonus;
   save.coins += earned;

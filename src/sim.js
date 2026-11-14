@@ -5,15 +5,16 @@ import { ROAD_HALF, mulberry32 } from './level.js';
 // splash: explodes on the first thing it touches. shape: x, y, z scale of the tracer. sound: voice of the gun (audio.js).
 // level.js refers to the guns by their position in this list (WEAPON_TIERS): add new ones at the end.
 const W0 = { range: 19, speed: 42, spread: 0.015, pellets: 1, fan: 0, pierce: false, splash: 0, shape: [1, 1, 1], sound: 'pop' };
+// Nobody gets hurt in Top Wesh: the squad is a gang of teenagers armed with whatever was in their backpacks.
 export const WEAPONS = [
-  { ...W0, name: 'Pistol', icon: '🔫', dmg: 1, rate: 0.6, color: 0xffd34d },
-  { ...W0, name: 'SMG', icon: '🔫', shape: [1, 1, 0.8], dmg: 1, rate: 1.05, spread: 0.05, color: 0xffa634 },
-  { ...W0, name: 'Shotgun', icon: '💥', shape: [1.5, 1.5, 0.45], sound: 'blast', dmg: 0.5, rate: 0.62, pellets: 4, fan: 0.3, range: 12, color: 0xffe9a0 },
-  { ...W0, name: 'Rifle', icon: '🎯', shape: [1.1, 1.1, 1.7], sound: 'crack', dmg: 2.2, rate: 0.8, range: 27, speed: 60, spread: 0.005, color: 0x6ff2ff },
-  { ...W0, name: 'Minigun', icon: '🌀', shape: [0.9, 0.9, 0.7], dmg: 1, rate: 2.5, spread: 0.09, color: 0x8dff5a },
-  { ...W0, name: 'Flamer', icon: '🔥', shape: [5, 3.5, 0.5], sound: 'roar', dmg: 0.55, rate: 3.4, range: 10, speed: 22, spread: 0.26, pierce: true, color: 0xff7a1a },
-  { ...W0, name: 'Rockets', icon: '🚀', shape: [3, 3, 0.75], sound: 'whoosh', dmg: 4.5, rate: 0.5, speed: 27, range: 24, spread: 0.03, splash: 1.7, color: 0xff4d3d },
-  { ...W0, name: 'Laser', icon: '⚡', shape: [1.4, 1.4, 2.8], sound: 'zap', dmg: 3.6, rate: 1.3, range: 27, speed: 75, spread: 0, pierce: true, color: 0xff5cf0 },
+  { ...W0, name: 'Spitballs', icon: '🥤', dmg: 1, rate: 0.6, color: 0xf5f1e3 },
+  { ...W0, name: 'Water gun', icon: '🔫', shape: [1, 1, 0.8], dmg: 1, rate: 1.05, spread: 0.05, color: 0x4fc3ff },
+  { ...W0, name: 'Party popper', icon: '🎉', shape: [1.5, 1.5, 0.45], sound: 'blast', dmg: 0.5, rate: 0.62, pellets: 4, fan: 0.3, range: 12, color: 0xff7ad9 },
+  { ...W0, name: 'Foam darts', icon: '🎯', shape: [1.1, 1.1, 1.7], sound: 'crack', dmg: 2.2, rate: 0.8, range: 27, speed: 60, spread: 0.005, color: 0xff8a1a },
+  { ...W0, name: 'Bubble gun', icon: '🧼', shape: [1.6, 1.6, 0.35], dmg: 1, rate: 2.5, spread: 0.09, color: 0xb8f4ff },
+  { ...W0, name: 'Deo spray', icon: '🧴', shape: [5, 3.5, 0.5], sound: 'roar', dmg: 0.55, rate: 3.4, range: 10, speed: 22, spread: 0.26, pierce: true, color: 0xe4f6ff },
+  { ...W0, name: 'Water balloons', icon: '🎈', shape: [3, 3, 0.75], sound: 'whoosh', dmg: 4.5, rate: 0.5, speed: 27, range: 24, spread: 0.03, splash: 1.7, color: 0x35d07f },
+  { ...W0, name: 'Laser pointer', icon: '🔦', shape: [1.4, 1.4, 2.8], sound: 'zap', dmg: 3.6, rate: 1.3, range: 27, speed: 75, spread: 0, pierce: true, color: 0x5cff6a },
 ];
 
 export const RUN_SPEED = 7;
@@ -33,7 +34,7 @@ const ENEMY = {
   boulder: { speed: 10, r: 1, power: 8, coins: 0, hp: [1, 0], wake: 46, straight: true, inv: true },
 };
 
-export const BOSS_NAMES = { crusher: 'CRUSHER', blaster: 'BLASTER', titan: 'TITAN', none: '' };
+export const BOSS_NAMES = { crusher: 'THE DAD', blaster: 'THE TEACHER', titan: 'THE PRINCIPAL', none: '' };
 
 // Spacing of the sunflower formation, tighter for very large squads so there is always room to sidestep.
 const SP = 0.21, FULL = 380;
@@ -487,12 +488,12 @@ export class Sim {
       text = '+' + r.v + ' ¢';
     } else if (r.type === 'rage') {
       this.rageT = 8 * (1 + 0.4 * this.perks.power);
-      text = 'RAGE! ×2 FIRE';
+      text = 'SUGAR RUSH! ×2';
     } else if (r.type === 'shield') {
       this.shieldT = 7 * (1 + 0.4 * this.perks.power);
-      text = 'SHIELD!';
+      text = 'HEADPHONES ON!';
     } else if (r.type === 'bomb') {
-      text = 'AIRSTRIKE!';
+      text = 'BASS DROP!';
       this.airstrike();
     }
     this.emit({ type: 'break', block: o, text });

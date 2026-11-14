@@ -1,15 +1,15 @@
 // Perks: one of three is offered the first time a level is cleared. They stack, up to `max` each,
 // and stay for good. Their effects live in sim.js (and in main.js for the coins).
 export const PERKS = [
-  { id: 'ricochet', name: 'Ricochet', icon: '↪️', max: 3, desc: 'Spent bullets bounce on: +20% chance' },
-  { id: 'blast', name: 'Explosive rounds', icon: '🧨', max: 5, desc: '+5% of kills blow up' },
-  { id: 'gates', name: 'Recruiter', icon: '📣', max: 5, desc: 'Plus gates give +10%' },
-  { id: 'guard', name: 'Escort', icon: '🛡️', max: 3, desc: '+4 s of shield at the start' },
-  { id: 'armor', name: 'Armour', icon: '🦺', max: 4, desc: '8% of losses are shrugged off' },
-  { id: 'hazard', name: 'Light feet', icon: '🥾', max: 3, desc: 'Saws, spikes and walls take 20% less' },
-  { id: 'power', name: 'Overcharge', icon: '🔋', max: 3, desc: 'Power-ups are 40% stronger' },
-  { id: 'coins', name: 'Loot', icon: '💰', max: 5, desc: '+20% coins' },
-  { id: 'sidearm', name: 'Sidearm', icon: '🔫', max: 1, desc: 'Start with an SMG or a Shotgun' },
+  { id: 'ricochet', name: 'Trick shot', icon: '🏀', max: 3, desc: 'Shots bounce on: +20% chance' },
+  { id: 'blast', name: 'Mint and cola', icon: '🧪', max: 5, desc: '+5% of hits go off like a geyser' },
+  { id: 'gates', name: 'Group chat', icon: '💬', max: 5, desc: 'Plus gates bring +10% friends' },
+  { id: 'guard', name: 'Not listening', icon: '🎧', max: 3, desc: '+4 s of headphones at the start' },
+  { id: 'armor', name: 'Puffer jacket', icon: '🧥', max: 4, desc: '8% of losses are shrugged off' },
+  { id: 'hazard', name: 'Fresh sneakers', icon: '👟', max: 3, desc: 'Bricks, spinners and walls take 20% less' },
+  { id: 'power', name: 'Power bank', icon: '🔋', max: 3, desc: 'Power-ups are 40% stronger' },
+  { id: 'coins', name: 'Pocket money', icon: '💰', max: 5, desc: '+20% coins' },
+  { id: 'sidearm', name: 'Starter pack', icon: '🎒', max: 1, desc: 'Start with a Water gun or a Party popper' },
 ];
 
 // Three different perks that are not maxed out yet (fewer when almost everything is)
@@ -21,9 +21,9 @@ export function offerPerks(owned, rng = Math.random) {
 }
 
 export const HEROES = [
-  { id: 'medic', name: 'Medic', icon: '🩺', cost: 150, desc: 'Revives 30% of the fallen every 5 s' },
-  { id: 'sniper', name: 'Sniper', icon: '🎯', cost: 300, desc: 'Picks off marksmen, bombers, shields' },
-  { id: 'tank', name: 'Tank', icon: '🪨', cost: 500, desc: 'Takes one heavy blow every 8 s' },
+  { id: 'medic', name: 'Big sister', icon: '🩹', cost: 150, desc: 'Brings back 30% of the lost every 5 s' },
+  { id: 'sniper', name: 'The gamer', icon: '🎮', cost: 300, desc: 'Aimbot: tags the most annoying grown-up' },
+  { id: 'tank', name: 'Big brother', icon: '💪', cost: 500, desc: 'Takes one big telling-off every 8 s' },
 ];
 
 // Stars for a cleared level, from the share of soldiers kept

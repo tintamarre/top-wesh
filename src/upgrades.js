@@ -1,8 +1,8 @@
 // Permanent upgrades bought with coins between levels.
 export const UPGRADES = [
-  { id: 'start', name: 'Recruits', desc: '+2 soldiers at the start', icon: '🪖' },
-  { id: 'power', name: 'Firepower', desc: '+15% bullet damage', icon: '💥' },
-  { id: 'rate', name: 'Fire rate', desc: '+10% shots per second', icon: '⚡' },
+  { id: 'start', name: 'The gang', desc: '+2 friends at the start', icon: '🧢' },
+  { id: 'power', name: 'Attitude', desc: '+15% damage', icon: '😎' },
+  { id: 'rate', name: 'Sugar', desc: '+10% shots per second', icon: '🍬' },
 ];
 
 const BASE = { start: 15, power: 25, rate: 25 };
