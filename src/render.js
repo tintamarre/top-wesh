@@ -10,6 +10,19 @@ const MAXP = 700; // drawn player soldiers (larger squads are sampled)
 const MAXE = 4000;
 const MAXB = 1600;
 const MAXFX = 900;
+const MAXSHOT = 160;
+
+// How each kind of enemy is drawn: colours of the soldier model, size, how many at most on screen
+const KINDS = {
+  grunt: { team: 0xe0352b, helmet: 0xff4136, trousers: 0x6b2a1a, scale: 1.08, max: MAXE },
+  runner: { team: 0xff9a1f, helmet: 0xffc94d, trousers: 0x7a3c0a, scale: 0.95, max: 600, lean: 0.35 },
+  brute: { team: 0x9c1f18, helmet: 0x4a0d09, trousers: 0x2a1512, scale: 1.9, max: 500 },
+  shield: { team: 0xb32a22, helmet: 0x8a909c, trousers: 0x3a3f4b, scale: 1.4, max: 300, extra: 'shield' },
+  bomber: { team: 0x2b2f3a, helmet: 0xffc928, trousers: 0x15171d, scale: 1.2, max: 300, extra: 'bomb' },
+  shooter: { team: 0x8e44e8, helmet: 0x5a1fb0, trousers: 0x2a1750, scale: 1.25, max: 200, extra: 'rifle' },
+};
+const POWER = { rage: { hex: 0xff8a1a, icon: '⚡' }, shield: { hex: 0x35d0ff, icon: '🛡️' }, bomb: { hex: 0x4a5266, icon: '💣' } };
+const BOSS_COLOR = { crusher: 0xf08a24, blaster: 0x2fae5a, titan: 0x8e44e8 };
 
 const THEME = {
   desert: { sky: 0x9fc8ea, fog: 0xcfd9df, ground: '#d7c29a', dots: ['#c4ab7e', '#e6d4ad', '#b89c6c'], hemiG: 0xb59d74 },
@@ -29,7 +42,7 @@ function paint(geo, hex) {
 }
 
 // One merged low-poly soldier, gun pointing +z, feet at y=0.
-function soldierGeometry(team, helmet, trousers) {
+function soldierGeometry(team, helmet, trousers, extra) {
   const parts = [];
   const add = (g, hex, x, y, z) => { g.translate(x, y, z); parts.push(paint(g, hex)); };
   add(new THREE.BoxGeometry(0.09, 0.2, 0.1), trousers, -0.065, 0.1, 0);
@@ -41,6 +54,13 @@ function soldierGeometry(team, helmet, trousers) {
   add(new THREE.CylinderGeometry(0.15, 0.15, 0.025, 8), helmet, 0, 0.59, 0);
   add(new THREE.BoxGeometry(0.05, 0.06, 0.3), 0x2b2f3a, 0.1, 0.36, 0.12);
   add(new THREE.BoxGeometry(0.06, 0.06, 0.16), team, 0.1, 0.35, 0.03);
+  if (extra === 'shield') {
+    add(new THREE.BoxGeometry(0.5, 0.56, 0.05), 0x9aa1ad, 0, 0.34, 0.27);
+    add(new THREE.BoxGeometry(0.5, 0.1, 0.06), 0xd8382f, 0, 0.4, 0.275);
+  } else if (extra === 'bomb') {
+    add(new THREE.SphereGeometry(0.17, 8, 6), 0xd8382f, 0, 0.36, -0.2);
+    add(new THREE.CylinderGeometry(0.03, 0.03, 0.12, 5), 0xffe04d, 0, 0.56, -0.2);
+  } else if (extra === 'rifle') add(new THREE.BoxGeometry(0.04, 0.05, 0.5), 0x15171d, 0.1, 0.38, 0.3);
   return mergeGeometries(parts);
 }
 
@@ -91,15 +111,38 @@ export class Renderer {
     // Instanced crowds
     const vc = this.mats.vc;
     this.players = new THREE.InstancedMesh(soldierGeometry(0x2f7bf5, 0x3a8cff, 0x1d3f8a), vc, MAXP);
-    this.enemies = new THREE.InstancedMesh(soldierGeometry(0xe0352b, 0xff4136, 0x6b2a1a), vc, MAXE);
-    for (const m of [this.players, this.enemies]) {
+    this.kinds = {};
+    for (const [id, K] of Object.entries(KINDS)) this.kinds[id] = { ...K, n: 0, mesh: new THREE.InstancedMesh(soldierGeometry(K.team, K.helmet, K.trousers, K.extra), vc, K.max) };
+    // Spiked iron ball
+    {
+      const parts = [paint(new THREE.IcosahedronGeometry(1, 1), 0x4a4f5c)];
+      const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1], [0.7, 0.7, 0], [-0.7, 0.7, 0], [0.7, -0.7, 0], [-0.7, -0.7, 0], [0, 0.7, 0.7], [0, -0.7, 0.7], [0, 0.7, -0.7], [0, -0.7, -0.7]];
+      const up = new THREE.Vector3(0, 1, 0);
+      for (const d of dirs) {
+        const c = new THREE.ConeGeometry(0.2, 0.5, 5);
+        const dv = new THREE.Vector3(...d).normalize();
+        c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dv));
+        c.translate(dv.x * 1.15, dv.y * 1.15, dv.z * 1.15);
+        parts.push(paint(c, 0xc9ced8));
+      }
+      this.kinds.boulder = { scale: 1, max: 80, n: 0, mesh: new THREE.InstancedMesh(mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g))), vc, 80) };
+    }
+    for (const m of [this.players, ...Object.values(this.kinds).map((K) => K.mesh)]) {
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.frustumCulled = false;
       m.castShadow = true;
       m.count = 0;
       this.scene.add(m);
     }
-    this.enemies.setColorAt(0, col(0xffffff));
+    // Enemy projectiles
+    this.orbs = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b2f }), MAXSHOT);
+    this.orbGlow = new THREE.InstancedMesh(new THREE.SphereGeometry(1.7, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff7a3d, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }), MAXSHOT);
+    for (const m of [this.orbs, this.orbGlow]) { m.frustumCulled = false; m.count = 0; this.scene.add(m); }
+    // Shield bubble around the squad
+    this.bubble = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x55dcff, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
+    this.bubble.visible = false;
+    this.bubble.renderOrder = 5;
+    this.scene.add(this.bubble);
     this.bulletMat = new THREE.MeshBasicMaterial({ color: 0xffd34d });
     this.bullets = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.07, 1.1), this.bulletMat, MAXB);
     this.bullets.frustumCulled = false;
@@ -211,7 +254,10 @@ export class Renderer {
     for (const g of sim.gates) this.buildGate(G, g);
     this.blockMeshes = new Map();
     for (const b of sim.blocks) this.buildBlock(G, b);
+    this.buildHazards(G, sim.hazards);
     this.buildBoss(G, sim.boss);
+    this.bulletMat.color.set(WEAPONS[sim.weapon].color);
+    this.glowMat.color.set(WEAPONS[sim.weapon].color);
 
     this.pShown = 0;
     const q = sim.squad;
@@ -349,6 +395,52 @@ export class Renderer {
     }
   }
 
+  buildHazards(G, hazards) {
+    this.saws = [];
+    const m = this.mats;
+    const spikes = [];
+    for (const h of hazards) {
+      if (h.kind === 'saw') {
+        const track = new THREE.Mesh(new THREE.BoxGeometry(h.amp * 2 + h.r * 2, 0.03, 0.22), m.dark);
+        track.position.set(h.x0, 0.016, -h.z);
+        G.add(track);
+        const grp = new THREE.Group();
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.86, h.r * 0.86, 0.07, 28), m.metal);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(h.r * 0.32, h.r * 0.32, 0.12, 14), m.red);
+        grp.add(disc, hub);
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * Math.PI * 2;
+          const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.3, 4), m.white);
+          tooth.position.set(Math.cos(a) * h.r * 0.93, 0, Math.sin(a) * h.r * 0.93);
+          tooth.rotation.set(0, -a, -Math.PI / 2 - 0.5);
+          grp.add(tooth);
+        }
+        grp.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        grp.position.set(h.x, 0.3, -h.z);
+        G.add(grp);
+        this.saws.push({ h, grp });
+      } else {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(h.w, 0.06, h.d), m.dark);
+        plate.position.set(h.x, 0.03, -h.z);
+        plate.receiveShadow = true;
+        G.add(plate);
+        for (const sz of [-1, 1]) {
+          const edge = new THREE.Mesh(new THREE.BoxGeometry(h.w, 0.07, 0.1), m.red);
+          edge.position.set(h.x, 0.035, -h.z + sz * (h.d / 2));
+          G.add(edge);
+        }
+        const nx = Math.max(2, Math.round(h.w / 0.42));
+        for (let i = 0; i < nx; i++) for (let j = 0; j < 3; j++) spikes.push([h.x - h.w / 2 + (h.w * (i + 0.5)) / nx, h.z - h.d / 2 + (h.d * (j + 0.5)) / 3]);
+      }
+    }
+    if (spikes.length) {
+      const sm = new THREE.InstancedMesh(new THREE.ConeGeometry(0.11, 0.5, 5), m.metal, spikes.length);
+      spikes.forEach(([x, z], i) => sm.setMatrixAt(i, this.m4.makeTranslation(x, 0.3, -z)));
+      sm.castShadow = true;
+      G.add(sm);
+    }
+  }
+
   buildGate(G, g) {
     const grp = new THREE.Group();
     const style = T.gateStyle(g);
@@ -400,11 +492,6 @@ export class Renderer {
         ring.position.y = y;
         body.add(ring);
       }
-      const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.gunTex }));
-      icon.position.y = 2.5;
-      icon.scale.set(2.2, 1.1, 1);
-      grp.userData.icon = icon;
-      grp.add(icon);
       sprite.position.set(0, 1.1, 1);
       sprite.scale.set(2.2, 1.1, 1);
     } else if (b.kind === 'crate') {
@@ -417,6 +504,25 @@ export class Renderer {
       body.add(gun, ice);
       sprite.position.set(0, 0.4, b.d / 2 + 0.4);
       sprite.scale.set(2, 1, 1);
+    } else if (b.kind === 'power') {
+      const P = POWER[b.reward.type];
+      body = new THREE.Group();
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.25, 1.25), new THREE.MeshLambertMaterial({ color: P.hex, emissive: P.hex, emissiveIntensity: 0.35 }));
+      box.position.y = 1.15;
+      box.rotation.set(0.6, 0.6, 0);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.9, 0.16, 16), this.mats.dark);
+      base.position.y = 0.08;
+      body.add(box, base);
+      grp.userData.spin = box;
+      const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.emojiTexture(P.icon), depthTest: false }));
+      icon.renderOrder = 10;
+      icon.position.y = 2.6;
+      icon.scale.set(1.3, 1.3, 1);
+      grp.userData.icon = icon;
+      grp.userData.iconY = 2.6;
+      grp.add(icon);
+      sprite.position.set(0, 0.45, 1);
+      sprite.scale.set(1.8, 0.9, 1);
     } else {
       // Jar with a prisoner inside
       body = new THREE.Group();
@@ -436,6 +542,16 @@ export class Renderer {
       sprite.position.set(0, 1.2, 1.4);
       sprite.scale.set(2.6, 1.3, 1);
     }
+    if (b.reward.type === 'weapon') {
+      const W = WEAPONS[b.reward.w];
+      const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.tagTexture(W.icon + ' ' + W.name, '#' + W.color.toString(16).padStart(6, '0')), depthTest: false }));
+      tag.renderOrder = 10;
+      tag.position.y = 2.8;
+      tag.scale.set(4.2, 1.05, 1);
+      grp.userData.icon = tag;
+      grp.userData.iconY = 2.8;
+      grp.add(tag);
+    }
     body.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     grp.add(body, sprite);
     grp.position.set(b.x, 0, -b.z);
@@ -451,7 +567,7 @@ export class Renderer {
     const box = (w, h, d, mat, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
     const sph = (r, mat, x, y, z) => { const o = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), mat); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
     // "Crusher": a squat orange mech with a red visor and hydraulic fists
-    const orange = new THREE.MeshLambertMaterial({ color: B.big ? 0x8e44e8 : 0xf08a24 });
+    const orange = new THREE.MeshLambertMaterial({ color: BOSS_COLOR[B.type] ?? 0xf08a24 });
     const steel = m.metal;
     const visor = new THREE.MeshBasicMaterial({ color: 0xff2a1f });
     const legs = [box(0.6, 1.1, 0.75, steel, -0.55, 0.55, 0), box(0.6, 1.1, 0.75, steel, 0.55, 0.55, 0)];
@@ -467,6 +583,18 @@ export class Renderer {
     box(0.85, 0.2, 0.06, visor, 0, 3.25, 0.57); // visor
     box(0.06, 0.6, 0.06, m.dark, 0.35, 3.8, -0.1); // antenna
     sph(0.09, visor, 0.35, 4.12, -0.1);
+    if (B.type !== 'crusher') {
+      // Shoulder cannons
+      for (const sx of [-1, 1]) {
+        box(0.5, 0.5, 0.9, m.dark, sx * 0.85, 3.25, 0.15);
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.9, 10), steel);
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(sx * 0.85, 3.25, 0.95);
+        barrel.castShadow = true;
+        g.add(barrel);
+        sph(0.13, visor, sx * 0.85, 3.25, 1.4);
+      }
+    }
     const arms = [];
     for (const sx of [-1, 1]) {
       const pivot = new THREE.Group();
@@ -493,7 +621,7 @@ export class Renderer {
     g.scale.setScalar(s);
     g.position.set(B.x, 0, -B.z);
     G.add(g);
-    this.boss = { g, arms, legs, bar, barSprite, s, fall: 0 };
+    this.boss = { g, arms, legs, bar, barSprite, s, fall: 0, mat: orange };
     bar.set(B.hp, B.maxHp);
   }
 
@@ -528,7 +656,7 @@ export class Renderer {
 
   handle(events) {
     const sim = this.sim;
-    let kills = 0, lost = 0;
+    let kills = 0, lost = 0, lostN = 0, sparks = 0, booms = 0;
     for (const e of events) {
       switch (e.type) {
         case 'gate': {
@@ -550,12 +678,63 @@ export class Renderer {
           }
           break;
         }
-        case 'kill':
-          if (kills++ < 40) this.burst(e.x, 0.4, e.z, e.kind === 'brute' ? 0x8a1d14 : 0xe8433a, e.kind === 'brute' ? 10 : 3, 2.5, e.kind === 'brute' ? 1.6 : 0.8, 0.45);
+        case 'kill': {
+          if (kills++ > 40) break;
+          const K = KINDS[e.kind];
+          if (!K) { this.burst(e.x, 1, e.z, 0x9aa1ad, 14, 5, 1.5, 0.6); break; }
+          const bigOne = K.scale > 1.15;
+          this.burst(e.x, 0.4, e.z, K.team, bigOne ? 9 : 3, 2.5, bigOne ? 1.5 : 0.8, 0.45);
           break;
+        }
         case 'lost':
-          if (lost++ < 30) this.burst(e.x, 0.4, e.z, 0x4f9bff, 4, 2.5, 0.9, 0.5);
+          if (lost++ < 30) this.burst(e.x, 0.4, e.z, 0x4f9bff, Math.min(10, 3 + e.n), 2.5, 0.9, 0.5);
+          lostN += e.n;
           break;
+        case 'blocked':
+          if (sparks++ < 6) this.burst(e.x, 0.6, e.z, 0x8fe8ff, 4, 3, 0.8, 0.35);
+          break;
+        case 'hazard':
+          if (sparks++ < 6) this.burst(e.x, 0.3, e.z, 0xffe04d, 5, 4, 0.7, 0.3);
+          this.shake = Math.max(this.shake, 0.12);
+          break;
+        case 'clang':
+          if (sparks++ < 4) this.burst(e.x, 0.6, e.z, 0xfff3c0, 2, 3, 0.5, 0.2);
+          break;
+        case 'boom':
+          if (booms++ < 8) {
+            this.ring(e.x, e.z, e.r * 1.2, 0xffb347);
+            this.burst(e.x, 0.5, e.z, 0xff8a1a, 9, 5, 1.4, 0.5);
+            this.burst(e.x, 0.5, e.z, 0x3a3f4b, 4, 3, 1.6, 0.7);
+          }
+          this.shake = Math.max(this.shake, 0.18);
+          break;
+        case 'orbHit':
+          this.burst(e.x, 0.5, e.z, 0xff3b2f, 8, 4, 1, 0.4);
+          this.shake = Math.max(this.shake, 0.2);
+          break;
+        case 'volley':
+          this.burst(e.x, 3.2, e.z, 0xff7a3d, 14, 4, 1, 0.4);
+          break;
+        case 'summon':
+          this.float('REINFORCEMENTS!', e.x, 2.5, e.z - 3, 'bad small');
+          break;
+        case 'enrage':
+          this.float('ENRAGED!', e.x, 5.5, e.z, 'bad');
+          this.burst(e.x, 2.5, e.z, 0xff2a1f, 30, 7, 1.5, 0.8);
+          this.shake = 0.5;
+          break;
+        case 'nuke':
+          this.ring(e.x, e.z, 34, 0xffffff);
+          this.ring(e.x, e.z, 22, 0xffb347);
+          for (let i = 0; i < 8; i++) this.burst(e.x + (Math.random() - 0.5) * 11, 0.5, e.z + (Math.random() - 0.5) * 24, 0xff8a1a, 10, 6, 1.8, 0.8);
+          this.shake = 0.9;
+          break;
+        case 'blockGone': {
+          const grp = this.blockMeshes.get(e.block);
+          if (grp) grp.visible = false;
+          this.burst(e.block.x, 0.8, e.block.z, 0xcfd3da, 10, 3, 1, 0.5);
+          break;
+        }
         case 'blockHit': {
           const grp = this.blockMeshes.get(e.block);
           if (grp) grp.userData.t = 0.08;
@@ -564,9 +743,9 @@ export class Renderer {
         case 'break': {
           const b = e.block, grp = this.blockMeshes.get(b);
           if (grp) grp.visible = false;
-          const hex = b.kind === 'barrel' ? 0xb4762f : b.kind === 'crate' ? 0x9fe6ff : b.kind === 'jar' ? 0x6fc4ff : 0xb8bbc2;
+          const hex = b.kind === 'barrel' ? 0xb4762f : b.kind === 'crate' ? 0x9fe6ff : b.kind === 'jar' ? 0x6fc4ff : b.kind === 'power' ? POWER[b.reward.type].hex : 0xb8bbc2;
           this.burst(b.x, 0.8, b.z, hex, 30, 5, 1.6, 0.9);
-          if (e.text) this.float(e.text, b.x, 2.2, b.z, b.reward.type === 'weapon' ? 'weapon' : 'good');
+          if (e.text) this.float(e.text, b.x, 2.2, b.z, b.reward.type === 'weapon' || b.kind === 'power' ? 'weapon' : 'good');
           if (b.reward.type === 'weapon') {
             this.bulletMat.color.set(WEAPONS[sim.weapon].color);
             this.glowMat.color.set(WEAPONS[sim.weapon].color);
@@ -577,7 +756,6 @@ export class Renderer {
         case 'smash':
           this.ring(e.x, e.z, e.r * 1.3, 0xffffff);
           this.burst(e.x, 0.2, e.z, 0xcfc6b5, 26, 6, 1.8, 0.8);
-          if (e.n) this.float('−' + e.n, e.x, 1.5, e.z, 'bad');
           this.shake = 0.7;
           break;
         case 'bossDead':
@@ -587,6 +765,8 @@ export class Renderer {
           break;
       }
     }
+    // One red number for everything lost this frame
+    if (lostN >= 2 && sim.squad.count > 0) this.float('−' + lostN, sim.squad.x + (Math.random() - 0.5) * 1.5, 1.4, sim.squad.z - 0.5, 'bad small');
   }
 
   // ---------- Per frame ----------
@@ -621,26 +801,49 @@ export class Renderer {
     this.players.count = shown;
     this.players.instanceMatrix.needsUpdate = true;
 
-    // Enemies
-    let n = 0;
-    const white = this.tmpC.setRGB(1, 1, 1);
+    // Enemies, one instanced mesh per kind
+    const kinds = this.kinds;
+    for (const id in kinds) kinds[id].n = 0;
     for (const en of sim.enemies) {
-      if (!en.alive || n >= MAXE) continue;
-      if (Math.abs(en.z - q.z) > 120) continue;
-      const brute = en.kind === 'brute';
-      const sc = brute ? 1.9 : 1.08;
-      const run = en.active;
-      const bob = run ? Math.abs(Math.sin(t * 13 + en.phase)) * 0.09 : 0;
-      e.set(run ? 0.12 : 0, en.z < q.z ? Math.PI : 0, run ? Math.sin(t * 13 + en.phase) * 0.06 : 0);
-      m4.compose(v.set(en.x, bob, -en.z), quat.setFromEuler(e), s.set(sc, sc, sc));
-      this.enemies.setMatrixAt(n, m4);
-      if (brute) this.enemies.setColorAt(n, this.tmpC.setRGB(0.72, 0.55, 0.55));
-      else this.enemies.setColorAt(n, white.setRGB(1, 1, 1));
-      n++;
+      if (!en.alive) continue;
+      const K = kinds[en.kind];
+      if (K.n >= K.max || Math.abs(en.z - q.z) > 120) continue;
+      if (en.straight) {
+        // Iron balls drop in when they start rolling
+        if (!en.active) continue;
+        const drop = Math.max(0, 0.35 - en.t) * 30;
+        e.set(en.t * en.speed, 0, 0);
+        m4.compose(v.set(en.x, 1 + drop, -en.z), quat.setFromEuler(e), s.set(1, 1, 1));
+      } else {
+        const sc = K.scale;
+        const run = en.active && en.speed > 0;
+        const bob = run ? Math.abs(Math.sin(t * 13 + en.phase)) * 0.09 : 0;
+        e.set(run ? K.lean ?? 0.12 : 0, en.z < q.z ? Math.PI : 0, run ? Math.sin(t * 13 + en.phase) * 0.06 : 0);
+        m4.compose(v.set(en.x, bob, -en.z), quat.setFromEuler(e), s.set(sc, sc, sc));
+      }
+      K.mesh.setMatrixAt(K.n++, m4);
     }
-    this.enemies.count = n;
-    this.enemies.instanceMatrix.needsUpdate = true;
-    if (this.enemies.instanceColor) this.enemies.instanceColor.needsUpdate = true;
+    for (const id in kinds) { kinds[id].mesh.count = kinds[id].n; kinds[id].mesh.instanceMatrix.needsUpdate = true; }
+
+    // Enemy shots
+    const ns = Math.min(sim.shots.length, MAXSHOT);
+    for (let i = 0; i < ns; i++) {
+      const o = sim.shots[i];
+      const sc = o.r * (1 + Math.sin(t * 20 + i) * 0.12);
+      m4.compose(v.set(o.x, 0.55, -o.z), quat.identity(), s.set(sc, sc, sc));
+      this.orbs.setMatrixAt(i, m4);
+      this.orbGlow.setMatrixAt(i, m4);
+    }
+    this.orbs.count = this.orbGlow.count = ns;
+    this.orbs.instanceMatrix.needsUpdate = this.orbGlow.instanceMatrix.needsUpdate = true;
+
+    // Saws and moving gates
+    for (const sw of this.saws) { sw.grp.position.x = sw.h.x; sw.grp.rotation.y = -t * 14; }
+
+    // Shield bubble
+    const shielded = sim.shieldT > 0 && q.count > 0;
+    this.bubble.visible = shielded && (sim.shieldT > 1.5 || Math.sin(t * 24) > 0);
+    if (shielded) { this.bubble.position.set(q.x, 0, -q.z); this.bubble.scale.set(q.Rx + 0.7, 1.5 + q.R * 0.25, q.Rz + 0.7); }
 
     // Bullets
     const bl = sim.bullets;
@@ -649,7 +852,8 @@ export class Renderer {
       const b = bl[i];
       e.set(0, Math.atan2(-b.slope, 1), 0);
       quat.setFromEuler(e);
-      m4.compose(v.set(b.x, 0.42, -b.z), quat, s.set(1, 1, 1));
+      const sh = WEAPONS[b.w].shape;
+      m4.compose(v.set(b.x, 0.42, -b.z), quat, s.set(sh[0], sh[1], sh[2]));
       this.bullets.setMatrixAt(i, m4);
       this.glow.setMatrixAt(i, m4);
     }
@@ -657,6 +861,7 @@ export class Renderer {
     this.bullets.instanceMatrix.needsUpdate = this.glow.instanceMatrix.needsUpdate = true;
 
     // Gates: pop, fade, bump
+    for (const g of sim.gates) if (g.move && !g.used) this.gateMeshes.get(g.id).position.x = g.x;
     for (const [, grp] of this.gateMeshes) {
       const u = grp.userData;
       if (u.pop) {
@@ -685,7 +890,8 @@ export class Renderer {
         u.body.position.x = Math.sin(t * 90) * 0.05;
         u.body.scale.setScalar(1.03);
       } else { u.body.position.x = 0; u.body.scale.setScalar(1); }
-      if (u.icon) u.icon.position.y = 2.5 + Math.sin(t * 3) * 0.12;
+      if (u.icon) u.icon.position.y = u.iconY + Math.sin(t * 3 + b.x) * 0.12;
+      if (u.spin) { u.spin.rotation.y = t * 1.8; u.spin.position.y = 1.15 + Math.sin(t * 3) * 0.1; }
     }
 
     this.updateBoss(sim, dt);
@@ -776,7 +982,16 @@ export class Renderer {
       const k = Math.min(1, (0.45 - B.t) / 0.12);
       a0 = a1 = -2.9 + 1.6 * k;
       b.g.rotation.x = 0.25 * k;
+    } else if (B.state === 'aim') {
+      const k = 1 - B.t / 0.7;
+      a0 = a1 = -1.5 * Math.min(1, k * 2);
+      b.g.rotation.x = -0.12 * k;
+    } else if (B.state === 'recoil') {
+      a0 = a1 = -1.5;
+      b.g.rotation.x = -0.25 * (B.t / 0.35);
     } else b.g.rotation.x *= 0.9;
+    b.mat.emissive.setHex(B.enraged ? 0xff2200 : 0x000000);
+    b.mat.emissiveIntensity = B.enraged ? 0.25 + Math.sin(t * 9) * 0.15 : 0;
     b.arms[0].rotation.x = a0;
     b.arms[1].rotation.x = a1;
   }

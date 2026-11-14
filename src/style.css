@@ -25,6 +25,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #bfd9ee; fon
 .float.good { color: #7fd0ff; }
 .float.bad { color: #ff5a4e; }
 .float.weapon { color: var(--yellow); font-size: 40px; }
+.float.small { font-size: 26px; }
+.boss-bar.enraged span { color: #ffb0a8; animation: blink .3s linear infinite alternate; }
+@keyframes blink { to { opacity: .55; } }
+.boss-bar.enraged i { background: linear-gradient(#ffb347, #ff3b1f); }
 
 /* HUD */
 #hud { position: fixed; inset: 0; pointer-events: none; }

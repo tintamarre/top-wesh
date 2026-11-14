@@ -1,6 +1,6 @@
 import './style.css';
 import { buildLevel } from './level.js';
-import { Sim } from './sim.js';
+import { Sim, BOSS_NAMES } from './sim.js';
 import { Renderer } from './render.js';
 import { Audio } from './audio.js';
 import { UPGRADES, upgradeCost, upgradeStats } from './upgrades.js';
@@ -30,12 +30,11 @@ function newRun(n) {
   const level = buildLevel(n);
   sim = new Sim(level, upgradeStats(save.up));
   renderer.loadLevel(level, sim);
-  renderer.bulletMat.color.set(0xffd34d);
-  renderer.glowMat.color.set(0xffd34d);
   ended = false;
   acc = 0;
   $('hudLevel').textContent = `Level ${n}`;
   $('bossBar').classList.add('hidden');
+  $('bossName').textContent = BOSS_NAMES[level.boss.type];
 }
 
 function show(id) {
@@ -120,7 +119,7 @@ function endLevel() {
   $('endTitle').textContent = won ? 'VICTORY!' : 'DEFEATED';
   $('endTitle').classList.toggle('fail', !won);
   $('endStats').innerHTML = won
-    ? `Level ${n} cleared<br>${sim.squad.count} soldiers left · best squad ${sim.peak}<br>${sim.kills} enemies down`
+    ? `Level ${n} cleared<br>${sim.squad.count} soldiers left · ${sim.lostTotal} lost<br>${sim.kills} enemies down with the ${sim.weaponInfo.name}`
     : `Level ${n}<br>Best squad ${sim.peak} · ${sim.kills} enemies down<br>Upgrade your squad and try again!`;
   $('endCoins').textContent = earned;
   $('btnNext').classList.toggle('hidden', !won);
@@ -189,10 +188,16 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+let lastChip = '';
 function hud() {
   $('hudCoins').textContent = save.coins + Math.floor(sim.coins);
   $('hudProg').style.width = `${Math.min(100, (sim.squad.z / sim.boss.z) * 100)}%`;
-  $('hudWeapon').textContent = '🔫 ' + sim.weaponInfo.name;
+  const W = sim.weaponInfo;
+  let chip = `${W.icon} ${W.name}${'★'.repeat(Math.min(3, sim.stars))}`;
+  if (sim.rageT > 0) chip += `  ·  ⚡ ${Math.ceil(sim.rageT)}s`;
+  if (sim.shieldT > 0) chip += `  ·  🛡️ ${Math.ceil(sim.shieldT)}s`;
+  if (chip !== lastChip) $('hudWeapon').textContent = lastChip = chip;
+  $('bossBar').classList.toggle('enraged', sim.boss.enraged);
   const B = sim.boss;
   const showBoss = B.active && B.alive;
   $('bossBar').classList.toggle('hidden', !showBoss);

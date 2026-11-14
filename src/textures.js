@@ -201,3 +201,43 @@ export function bossBar() {
     },
   };
 }
+
+// Name of the gun inside a barrel or a crate, on a pill in the colour of its bullets
+const tagCache = new Map();
+export function tagTexture(text, color) {
+  if (tagCache.has(text)) return tagCache.get(text);
+  const c = canvas(512, 128);
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(15,18,30,.82)';
+  roundRect(g, 4, 8, 504, 112, 56);
+  g.fill();
+  g.lineWidth = 8;
+  g.strokeStyle = color;
+  roundRect(g, 8, 12, 496, 104, 52);
+  g.stroke();
+  outlinedText(g, text, 256, 68, 62, '#fff', 'rgba(0,0,0,.6)');
+  const t = texOf(c);
+  tagCache.set(text, t);
+  return t;
+}
+
+const emojiCache = new Map();
+export function emojiTexture(ch) {
+  if (emojiCache.has(ch)) return emojiCache.get(ch);
+  const c = canvas(128, 128);
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(15,18,30,.8)';
+  g.beginPath();
+  g.arc(64, 64, 60, 0, 7);
+  g.fill();
+  g.lineWidth = 6;
+  g.strokeStyle = '#fff';
+  g.stroke();
+  g.font = '72px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(ch, 64, 70);
+  const t = texOf(c);
+  emojiCache.set(ch, t);
+  return t;
+}

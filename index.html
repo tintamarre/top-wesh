@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#1f5fd6" />
-    <meta name="description" content="Top Wesh: grow your squad through the gates, smash the barriers, shoot down the red horde and the mech at the end. A squad-runner shooter in your browser." />
+    <meta name="description" content="Top Wesh: grow your squad through the gates, dodge saws and spikes, pick your gun, shoot down the red horde and the mech at the end. A squad-runner shooter in your browser." />
     <title>Top Wesh</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='14' width='56' height='36' rx='9' fill='%231f5fd6'/%3E%3Ctext x='32' y='42' font-family='Arial Black,Arial' font-weight='900' font-size='26' text-anchor='middle' fill='white'%3E+1%3C/text%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,7 +26,7 @@
         <div class="coins"><span class="coin"></span><span id="hudCoins">0</span></div>
       </div>
       <div id="hudWeapon" class="weapon-chip">Pistol</div>
-      <div id="bossBar" class="boss-bar hidden"><span>CRUSHER</span><div><i id="bossFill"></i></div></div>
+      <div id="bossBar" class="boss-bar hidden"><span id="bossName">CRUSHER</span><div><i id="bossFill"></i></div></div>
       <div id="hint" class="hint">◀ drag to move ▶</div>
     </div>
 
@@ -54,8 +54,11 @@
           <li><b>Drag</b> left and right (or <kbd>←</kbd> <kbd>→</kbd>, <kbd>A</kbd> <kbd>D</kbd>) to steer your squad. It runs and shoots by itself.</li>
           <li>Walk through <b class="t-blue">blue</b> and <b class="t-yellow">yellow</b> gates to grow your squad. Avoid the <b class="t-red">red</b> ones, or shoot them until they turn blue.</li>
           <li>In the three-lane sections, pick your lane: a row of <b class="t-blue">+1</b>, the red horde, or a barrier to break with big <b class="t-yellow">+</b> gates behind it.</li>
-          <li>Shoot <b>barrels</b> and <b>ice crates</b> for a better gun, and <b>jars</b> to free prisoners who join you.</li>
-          <li>Every red soldier that reaches you takes one of yours. The Crusher mech at the end smashes the ground in front of it: keep shooting.</li>
+          <li>Shoot <b>jars</b> to free prisoners, and <b>barrels</b> and <b>ice crates</b> for a gun. When two guns stand side by side, the one you break is the one you get: Shotgun and Flamer are short and wide, Rifle and Laser go through the ranks, Rockets explode.</li>
+          <li>Glowing boxes: <b>⚡ rage</b> doubles your fire, <b>🛡️ shield</b> stops every loss for a few seconds, <b>💣 airstrike</b> clears the road.</li>
+          <li>Step around <b class="t-red">spike strips</b>, <b class="t-red">saw blades</b>, rolling <b>iron balls</b> (bullets bounce off) and the red <b class="t-red">orbs</b> fired by purple marksmen.</li>
+          <li>Red soldiers trade one for one. <b>Shield bearers</b> stop bullets, <b>bombers</b> blow up their friends when shot early, orange <b>runners</b> are fast.</li>
+          <li>Three bosses: the Crusher smashes the ground, the Blaster fires fans of orbs, the Titan does both. Below half health they get angry.</li>
           <li>Spend your coins on Recruits, Firepower and Fire rate between levels.</li>
         </ul>
         <button class="btn" data-close>Got it</button>
