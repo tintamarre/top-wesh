@@ -34,8 +34,13 @@
     <div id="menu" class="screen">
       <div class="menu-inner">
         <h1 class="logo"><span>TOP</span><span>WESH</span></h1>
-        <div class="menu-coins"><span class="coin"></span><span id="menuCoins">0</span></div>
+        <div class="menu-row">
+          <div class="menu-coins"><span class="coin"></span><span id="menuCoins">0</span></div>
+          <button id="btnLevels" class="menu-coins as-btn">★ <span id="menuStars">0</span> · Levels</button>
+        </div>
+        <div id="menuPerks" class="perk-strip hidden"></div>
         <div id="shop" class="shop"></div>
+        <div id="heroes" class="shop heroes"></div>
         <button id="btnPlay" class="btn big">PLAY <small id="playLevel">Level 1</small></button>
         <div class="menu-foot">
           <button id="btnSound" class="chip">🔊 Sound</button>
@@ -56,12 +61,25 @@
           <li>In the three-lane sections, pick your lane: a row of <b class="t-blue">+1</b>, the red horde, or a barrier to break with big <b class="t-yellow">+</b> gates behind it.</li>
           <li>Shoot <b>jars</b> to free prisoners, and <b>barrels</b> and <b>ice crates</b> for a gun. When two guns stand side by side, the one you break is the one you get: Shotgun and Flamer are short and wide, Rifle and Laser go through the ranks, Rockets explode.</li>
           <li>Glowing boxes: <b>⚡ rage</b> doubles your fire, <b>🛡️ shield</b> stops every loss for a few seconds, <b>💣 airstrike</b> clears the road.</li>
-          <li>Step around <b class="t-red">spike strips</b>, <b class="t-red">saw blades</b>, rolling <b>iron balls</b> (bullets bounce off) and the red <b class="t-red">orbs</b> fired by purple marksmen.</li>
+          <li>Step around <b class="t-red">spike strips</b>, <b class="t-red">saw blades</b>, closing <b>walls</b>, rolling <b>iron balls</b> (bullets bounce off) and the red <b class="t-red">orbs</b> fired by purple marksmen.</li>
           <li>Red soldiers trade one for one. <b>Shield bearers</b> stop bullets, <b>bombers</b> blow up their friends when shot early, orange <b>runners</b> are fast.</li>
           <li>Three bosses: the Crusher smashes the ground, the Blaster fires fans of orbs, the Titan does both. Below half health they get angry.</li>
-          <li>Spend your coins on Recruits, Firepower and Fire rate between levels.</li>
+          <li>Coins lie on the road, often where it is risky. After every third level a <b class="t-yellow">coin rush</b> has nothing but coins and traps.</li>
+          <li>Finish with 80% of your soldiers for <b class="t-yellow">★★★</b>. The first time you clear a level you pick a <b>perk</b> that stays for good.</li>
+          <li>Spend your coins on Recruits, Firepower and Fire rate, and on <b>heroes</b>: the Medic revives, the Sniper picks off the dangerous ones, the Tank takes a heavy blow.</li>
         </ul>
         <button class="btn" data-close>Got it</button>
+      </div>
+    </div>
+
+    <!-- Level map -->
+    <div id="levels" class="screen dim hidden">
+      <div class="panel">
+        <h2>Levels</h2>
+        <div id="levelsTotal" class="end-stats"></div>
+        <div id="levelGrid" class="level-grid"></div>
+        <div class="end-stats"><small>★★★ for keeping 80% of your soldiers, ★★ for 55%. New stars pay coins.</small></div>
+        <button class="btn ghost" data-close>Back</button>
       </div>
     </div>
 
@@ -79,11 +97,21 @@
     <div id="end" class="screen dim hidden">
       <div class="panel end">
         <div id="endTitle" class="end-title">VICTORY!</div>
+        <div id="endStars" class="end-stars hidden"></div>
         <div id="endStats" class="end-stats"></div>
         <div class="end-coins"><span class="coin"></span>+<span id="endCoins">0</span></div>
         <button id="btnNext" class="btn big">Next level</button>
         <button id="btnRetry" class="btn ghost">Retry</button>
         <button id="btnMenu" class="btn ghost">Upgrades</button>
+      </div>
+    </div>
+
+    <!-- Perk choice after a first clear -->
+    <div id="perks" class="screen dim hidden">
+      <div class="panel">
+        <h2>Pick a perk</h2>
+        <div class="end-stats">It stays with you for good.</div>
+        <div id="perkList" class="perk-list"></div>
       </div>
     </div>
 

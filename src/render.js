@@ -2,7 +2,7 @@
 // looks down −z and +x stays on the right of the screen.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ROAD_HALF, mulberry32 } from './level.js';
+import { mulberry32 } from './level.js';
 import { WEAPONS } from './sim.js';
 import * as T from './textures.js';
 
@@ -11,6 +11,8 @@ const MAXE = 4000;
 const MAXB = 1600;
 const MAXFX = 900;
 const MAXSHOT = 160;
+const MAXCOIN = 220;
+const HERO_LOOK = { medic: [0xf4f6fa, 0x35c46a, 0xd9dde6, 1.5], sniper: [0x2c5a3a, 0x1d3a26, 0x23302a, 1.5, 'rifle'], tank: [0xf2b01e, 0x8a909c, 0x5a4a1a, 2.1, 'shield'] };
 
 // How each kind of enemy is drawn: colours of the soldier model, size, how many at most on screen
 const KINDS = {
@@ -24,11 +26,19 @@ const KINDS = {
 const POWER = { rage: { hex: 0xff8a1a, icon: '⚡' }, shield: { hex: 0x35d0ff, icon: '🛡️' }, bomb: { hex: 0x4a5266, icon: '💣' } };
 const BOSS_COLOR = { crusher: 0xf08a24, blaster: 0x2fae5a, titan: 0x8e44e8 };
 
+// fogN / fogF: where the fog starts and ends. hemiI, sunI, lampI: light intensities (the lamp is the squad's own light).
+const DAY = { fogN: 70, fogF: 190, hemiI: 1.25, sunI: 2.1, lampI: 0 };
 const THEME = {
-  desert: { sky: 0x9fc8ea, fog: 0xcfd9df, ground: '#d7c29a', dots: ['#c4ab7e', '#e6d4ad', '#b89c6c'], hemiG: 0xb59d74 },
-  bridge: { sky: 0x7fb6e6, fog: 0x9cc3e4, ground: null, water: 0x2f7fc4, hemiG: 0x4f7fa8 },
-  snow: { sky: 0xcfe3f2, fog: 0xe4eef5, ground: '#eef3f7', dots: ['#d9e3ec', '#ffffff', '#c9d6e2'], hemiG: 0xc7d3de },
+  desert: { ...DAY, sky: 0x9fc8ea, fog: 0xcfd9df, ground: '#d7c29a', dots: ['#c4ab7e', '#e6d4ad', '#b89c6c'], hemiG: 0xb59d74 },
+  meadow: { ...DAY, sky: 0x8fd0ff, fog: 0xd3ecff, ground: '#86c45c', dots: ['#6fb04a', '#a3d977', '#5d9c40'], hemiG: 0x6f9c4a },
+  bridge: { ...DAY, sky: 0x7fb6e6, fog: 0x9cc3e4, ground: null, water: 0x2f7fc4, hemiG: 0x4f7fa8 },
+  night: { fogN: 20, fogF: 50, hemiI: 0.3, sunI: 0.25, lampI: 55, sky: 0x0a0f22, fog: 0x0a0f22, ground: '#4a4658', dots: ['#3a3748', '#5a566a', '#2f2c3c'], hemiG: 0x1c1e30 },
+  snow: { ...DAY, sky: 0xcfe3f2, fog: 0xe4eef5, ground: '#eef3f7', dots: ['#d9e3ec', '#ffffff', '#c9d6e2'], hemiG: 0xc7d3de },
+  city: { ...DAY, fogN: 60, fogF: 170, sky: 0xaec6de, fog: 0xc6d2de, ground: '#8b909c', dots: ['#7c818d', '#9a9fab', '#70757f'], hemiG: 0x7d8290 },
+  lava: { fogN: 45, fogF: 130, hemiI: 0.9, sunI: 1.3, lampI: 0, sky: 0x2b1512, fog: 0x4a1f14, ground: null, lava: 0xf04a10, hemiG: 0xff6a2a },
 };
+for (const th of Object.values(THEME)) Object.assign(th, { cSky: new THREE.Color(th.sky), cFog: new THREE.Color(th.fog), cHemi: new THREE.Color(th.hemiG) });
+const TRANSITION = 50; // length of road over which one scenery fades into the next
 
 const col = (hex) => new THREE.Color(hex);
 
@@ -138,6 +148,23 @@ export class Renderer {
     this.orbs = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b2f }), MAXSHOT);
     this.orbGlow = new THREE.InstancedMesh(new THREE.SphereGeometry(1.7, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff7a3d, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }), MAXSHOT);
     for (const m of [this.orbs, this.orbGlow]) { m.frustumCulled = false; m.count = 0; this.scene.add(m); }
+    // Coins to pick up, and the lamp of the night levels
+    this.coins = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.07, 14).rotateX(Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xffc928, emissive: 0xb07a00, emissiveIntensity: 0.6 }), MAXCOIN);
+    this.coins.frustumCulled = false;
+    this.coins.count = 0;
+    this.scene.add(this.coins);
+    this.lamp = new THREE.PointLight(0xffe6bf, 0, 40, 1.2);
+    this.scene.add(this.lamp);
+    // Heroes walking with the squad
+    this.heroes = {};
+    for (const [id, [team, helmet, trousers, scale, extra]] of Object.entries(HERO_LOOK)) {
+      const m = new THREE.Mesh(soldierGeometry(team, helmet, trousers, extra), vc);
+      m.scale.setScalar(scale);
+      m.castShadow = true;
+      m.visible = false;
+      this.scene.add(m);
+      this.heroes[id] = m;
+    }
     // Shield bubble around the squad
     this.bubble = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x55dcff, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
     this.bubble.visible = false;
@@ -219,21 +246,22 @@ export class Renderer {
     this.scene.add(G);
     this.level = level;
     this.sim = sim;
-    const th = (this.theme = THEME[level.theme]);
-    this.scene.background = col(th.sky);
-    this.scene.fog = new THREE.Fog(th.fog, 70, 190);
-    this.hemi.groundColor = col(th.hemiG);
+    const H = (this.half = level.half ?? 6);
+    this.zones = level.zones ?? [{ z0: 0, z1: level.length, theme: level.theme }];
+    this.scene.background = new THREE.Color();
+    this.scene.fog = new THREE.Fog(0, 70, 190);
+    this.applyTheme(sim.squad.z);
     const len = level.length + 60;
 
     // Road
-    const road = new THREE.Mesh(new THREE.BoxGeometry(ROAD_HALF * 2 + 0.4, 0.6, len), this.mats.road);
+    const road = new THREE.Mesh(new THREE.BoxGeometry(H * 2 + 0.4, 0.6, len), this.mats.road);
     road.material.map.repeat.set(2, len / 6);
     road.position.set(0, -0.3, -(len / 2 - 25));
     road.receiveShadow = true;
     G.add(road);
     for (const sx of [-1, 1]) {
       const curb = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.5, len), this.mats.curb);
-      curb.position.set(sx * (ROAD_HALF + 0.42), 0.0, road.position.z);
+      curb.position.set(sx * (H + 0.42), 0.0, road.position.z);
       curb.receiveShadow = curb.castShadow = true;
       G.add(curb);
     }
@@ -242,7 +270,7 @@ export class Renderer {
     const dashes = [];
     for (let z = -20; z < level.length + 30; z += 6) {
       if (level.sections.some((s) => z > s.z0 - 2 && z < s.z1 + 2)) continue;
-      for (const x of [-2, 2]) dashes.push([x, z]);
+      for (const x of [-H / 3, H / 3]) dashes.push([x, z]);
     }
     const dashMesh = new THREE.InstancedMesh(dashGeo, this.mats.white, dashes.length);
     dashes.forEach(([x, z], i) => dashMesh.setMatrixAt(i, this.m4.makeTranslation(x, 0.011, -z)));
@@ -255,7 +283,14 @@ export class Renderer {
     this.blockMeshes = new Map();
     for (const b of sim.blocks) this.buildBlock(G, b);
     this.buildHazards(G, sim.hazards);
-    this.buildBoss(G, sim.boss);
+    this.boss = null;
+    if (sim.boss.type !== 'none') this.buildBoss(G, sim.boss);
+    else {
+      // Finish line of a bonus run
+      const line = new THREE.Mesh(new THREE.BoxGeometry(H * 2, 0.03, 1.6), this.mats.hazard);
+      line.position.set(0, 0.016, -level.finish);
+      G.add(line);
+    }
     this.bulletMat.color.set(WEAPONS[sim.weapon].color);
     this.glowMat.color.set(WEAPONS[sim.weapon].color);
 
@@ -265,95 +300,181 @@ export class Renderer {
     this.camLook.set(q.x * 0.3, 0, -q.z - 9);
   }
 
+  // Sky, fog and lights for a position on the road: the theme of its stretch, faded into the next one
+  applyTheme(z) {
+    const zs = this.zones;
+    let i = 0;
+    while (i < zs.length - 1 && z > zs[i].z1 - TRANSITION / 2) i++;
+    const b = THEME[zs[i].theme], a = i > 0 ? THEME[zs[i - 1].theme] : b;
+    let u = i > 0 ? Math.min(1, Math.max(0, (z - (zs[i].z0 - TRANSITION / 2)) / TRANSITION)) : 1;
+    u = u * u * (3 - 2 * u);
+    const mix = (k) => a[k] + (b[k] - a[k]) * u;
+    this.scene.background.lerpColors(a.cSky, b.cSky, u);
+    this.scene.fog.color.lerpColors(a.cFog, b.cFog, u);
+    this.scene.fog.near = mix('fogN');
+    this.scene.fog.far = mix('fogF');
+    this.hemi.groundColor.lerpColors(a.cHemi, b.cHemi, u);
+    this.hemi.intensity = mix('hemiI');
+    this.sun.intensity = mix('sunI');
+    this.lamp.intensity = mix('lampI');
+  }
+
   buildScenery(G, level, len) {
-    const th = this.theme;
     const rng = mulberry32(level.n * 77 + 3);
+    this.pulse = [];
+    const zs = this.zones;
+    zs.forEach((zn, i) => this.buildZone(G, zn.theme, i === 0 ? -70 : zn.z0, i === zs.length - 1 ? len + 60 : zn.z1, rng));
+  }
+
+  // Scenery of one stretch of road, from z = a to z = b
+  buildZone(G, name, a, b, rng) {
+    const th = THEME[name];
+    const H = this.half, L = b - a, mid = -(a + b) / 2;
+    const m4 = this.m4, v = this.v, q = this.q, sc = this.s, e = this.e;
+    const instanced = (geo, mat, items, shadow = true) => {
+      // items: [x, y, z, sx, sy, sz, ry]
+      if (!items.length) return null;
+      const mesh = new THREE.InstancedMesh(geo, mat, items.length);
+      items.forEach((it, i) => {
+        e.set(0, it[6] ?? 0, 0);
+        mesh.setMatrixAt(i, m4.compose(v.set(it[0], it[1], -it[2]), q.setFromEuler(e), sc.set(it[3], it[4], it[5])));
+      });
+      mesh.castShadow = shadow;
+      mesh.receiveShadow = shadow;
+      G.add(mesh);
+      return mesh;
+    };
+    const flat = (w, y, mat) => {
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, L), mat);
+      p.rotation.x = -Math.PI / 2;
+      p.position.set(0, y, mid);
+      G.add(p);
+      return p;
+    };
+    const side = () => (rng() < 0.5 ? -1 : 1);
     if (th.ground) {
       const tex = T.groundTexture(th.ground, th.dots);
-      tex.repeat.set(12, len / 20);
-      const ground = new THREE.Mesh(new THREE.PlaneGeometry(260, len + 200), new THREE.MeshLambertMaterial({ map: tex }));
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.set(0, -0.62, -(len / 2 - 25));
-      ground.receiveShadow = true;
-      G.add(ground);
+      tex.repeat.set(12, L / 20);
+      flat(260, -0.62, new THREE.MeshLambertMaterial({ map: tex })).receiveShadow = true;
     }
-    if (level.theme === 'desert') {
+    if (name === 'desert' || name === 'night') {
       // Ruined buildings and watchtowers
       const boxes = [];
-      for (let z = -10; z < len; z += 7 + rng() * 9) {
-        for (const side of [-1, 1]) {
+      for (let z = a; z < b; z += 7 + rng() * 9) {
+        for (const sd of [-1, 1]) {
           if (rng() < 0.35) continue;
-          const x = side * (11 + rng() * 26);
+          const x = sd * (H + 5 + rng() * 26);
           const w = 2 + rng() * 5, d = 2 + rng() * 5, h = 1 + rng() * 6;
-          boxes.push({ x, z, w, d, h, ry: rng() * 0.3 });
-          if (rng() < 0.5) boxes.push({ x: x + (rng() - 0.5) * w, z: z + d * 0.6, w: 0.6 + rng(), d: 0.6 + rng(), h: 0.4 + rng() * 0.6, ry: rng() * 3 });
+          boxes.push([x, h / 2 - 0.6, z, w, h, d, rng() * 0.3]);
+          if (rng() < 0.5) { const h2 = 0.4 + rng() * 0.6; boxes.push([x + (rng() - 0.5) * w, h2 / 2 - 0.6, z + d * 0.6, 0.6 + rng(), h2, 0.6 + rng(), rng() * 3]); }
         }
       }
-      const ruin = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), this.mats.concrete, boxes.length);
-      boxes.forEach((b, i) => {
-        this.e.set(0, b.ry, 0);
-        this.m4.compose(this.v.set(b.x, b.h / 2 - 0.6, -b.z), this.q.setFromEuler(this.e), this.s.set(b.w, b.h, b.d));
-        ruin.setMatrixAt(i, this.m4);
-      });
-      ruin.castShadow = ruin.receiveShadow = true;
-      G.add(ruin);
-      for (let z = 30; z < len; z += 70 + rng() * 40) this.watchtower(G, (rng() < 0.5 ? -1 : 1) * (12 + rng() * 6), z);
-    } else if (level.theme === 'bridge') {
-      const water = new THREE.Mesh(new THREE.PlaneGeometry(500, len + 300), new THREE.MeshPhongMaterial({ color: th.water, shininess: 80, specular: 0x88bbff }));
-      water.rotation.x = -Math.PI / 2;
-      water.position.set(0, -6, -(len / 2 - 25));
-      G.add(water);
-      this.water = water;
-      // Deck under the road, red rails, towers and cables
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(ROAD_HALF * 2 + 3, 1.4, len), this.mats.dark);
-      deck.position.set(0, -1.3, -(len / 2 - 25));
+      instanced(new THREE.BoxGeometry(1, 1, 1), this.mats.concrete, boxes);
+      for (let z = a + 30; z < b; z += 70 + rng() * 40) this.watchtower(G, side() * (H + 6 + rng() * 6), z);
+    } else if (name === 'bridge' || name === 'lava') {
+      // The road on a deck, over water or over lava
+      const lava = name === 'lava';
+      const mat = lava ? new THREE.MeshBasicMaterial({ color: th.lava, fog: false }) : new THREE.MeshPhongMaterial({ color: th.water, shininess: 80, specular: 0x88bbff });
+      flat(500, lava ? -2.2 : -6, mat);
+      this.pulse.push({ mat, hex: lava ? th.lava : th.water, amp: lava ? 0.06 : 0.015, speed: lava ? 2.2 : 0.8 });
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(H * 2 + 3, lava ? 2.6 : 1.4, L), this.mats.dark);
+      deck.position.set(0, lava ? -1.9 : -1.3, mid);
       G.add(deck);
-      const railMat = new THREE.MeshLambertMaterial({ color: 0xd2332b });
-      for (const sx of [-1, 1]) {
-        for (const y of [0.55, 1.05]) {
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, len), railMat);
-          rail.position.set(sx * (ROAD_HALF + 0.75), y, -(len / 2 - 25));
-          G.add(rail);
+      if (lava) {
+        // Black rock spires and glowing boulders in the lava
+        const rocks = [], embers = [];
+        for (let z = a; z < b; z += 3 + rng() * 5) {
+          const s = 1 + rng() * 3.5;
+          rocks.push([side() * (H + 4 + rng() * 34), -2.2 + s * 1.2, z, s, s * (1.5 + rng() * 2), s, rng() * 3]);
+          if (rng() < 0.5) embers.push([side() * (H + 3 + rng() * 30), -2, z + rng() * 3, 0.5 + rng(), 0.3, 0.5 + rng(), 0]);
         }
-        const posts = Math.floor(len / 2.5);
-        const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.14, 1.15, 0.14), railMat, posts);
-        for (let i = 0; i < posts; i++) pm.setMatrixAt(i, this.m4.makeTranslation(sx * (ROAD_HALF + 0.75), 0.55, -(i * 2.5 - 25)));
-        G.add(pm);
-      }
-      for (let z = 20; z < len; z += 90) {
+        instanced(new THREE.ConeGeometry(1, 2, 6), new THREE.MeshLambertMaterial({ color: 0x2a2226, flatShading: true }), rocks);
+        instanced(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd23a }), embers, false);
+      } else {
+        const railMat = new THREE.MeshLambertMaterial({ color: 0xd2332b });
+        const one = new THREE.BoxGeometry(1, 1, 1);
+        const rails = [], posts = [], towers = [];
         for (const sx of [-1, 1]) {
-          const tower = new THREE.Mesh(new THREE.BoxGeometry(1.2, 26, 1.2), railMat);
-          tower.position.set(sx * (ROAD_HALF + 2), 12, -z);
-          tower.castShadow = true;
-          G.add(tower);
-          for (const dz of [-45, 45]) {
-            const a = new THREE.Vector3(sx * (ROAD_HALF + 2), 24.5, -z), b = new THREE.Vector3(sx * (ROAD_HALF + 1), 0.8, -(z + dz));
-            const mid = a.clone().add(b).multiplyScalar(0.5);
-            const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, a.distanceTo(b), 5), railMat);
-            cable.position.copy(mid);
-            cable.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-            G.add(cable);
-          }
+          for (const y of [0.55, 1.05]) rails.push([sx * (H + 0.75), y, (a + b) / 2, 0.12, 0.12, L]);
+          for (let z = a; z < b; z += 2.5) posts.push([sx * (H + 0.75), 0.55, z, 0.14, 1.15, 0.14]);
         }
-        const beam = new THREE.Mesh(new THREE.BoxGeometry(ROAD_HALF * 2 + 5, 1, 1), railMat);
-        beam.position.set(0, 24, -z);
-        G.add(beam);
+        for (let z = a + 20; z < b - 10; z += 90) {
+          for (const sx of [-1, 1]) {
+            towers.push([sx * (H + 2), 12, z, 1.2, 26, 1.2]);
+            for (const dz of [-45, 45]) {
+              const p0 = new THREE.Vector3(sx * (H + 2), 24.5, -z), p1 = new THREE.Vector3(sx * (H + 1), 0.8, -(z + dz));
+              const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, p0.distanceTo(p1), 5), railMat);
+              cable.position.copy(p0).add(p1).multiplyScalar(0.5);
+              cable.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1.clone().sub(p0).normalize());
+              G.add(cable);
+            }
+          }
+          towers.push([0, 24, z, H * 2 + 5, 1, 1]);
+        }
+        instanced(one, railMat, rails, false);
+        instanced(one, railMat, posts, false);
+        instanced(one, railMat, towers);
       }
-    } else {
-      // Snow: pine trees and rocks
+    } else if (name === 'snow') {
+      // Pine trees
       const trees = [];
-      for (let z = -10; z < len; z += 2.5 + rng() * 3)
-        for (const side of [-1, 1]) if (rng() < 0.7) trees.push([side * (9 + rng() * 30), z, 0.8 + rng() * 1.2]);
+      for (let z = a; z < b; z += 2.5 + rng() * 3)
+        for (const sd of [-1, 1]) if (rng() < 0.7) { const s = 0.8 + rng() * 1.2; trees.push([sd * (H + 3 + rng() * 30), -0.6, z, s, s, s]); }
       const pine = mergeGeometries([
         paint(new THREE.CylinderGeometry(0.15, 0.2, 0.8, 6).translate(0, 0.4, 0), 0x6b4a2b),
         paint(new THREE.ConeGeometry(1.1, 1.8, 7).translate(0, 1.4, 0), 0x2f6b47),
         paint(new THREE.ConeGeometry(0.85, 1.5, 7).translate(0, 2.2, 0), 0x3b7d55),
         paint(new THREE.ConeGeometry(0.55, 1.1, 7).translate(0, 2.9, 0), 0xf4f8fb),
       ]);
-      const tm = new THREE.InstancedMesh(pine, this.mats.vc, trees.length);
-      trees.forEach(([x, z, s], i) => tm.setMatrixAt(i, this.m4.compose(this.v.set(x, -0.6, -z), this.q.identity(), this.s.set(s, s, s))));
-      tm.castShadow = true;
-      G.add(tm);
+      instanced(pine, this.mats.vc, trees);
+    } else if (name === 'meadow') {
+      // Round trees, bushes, rocks and a wooden fence along the road
+      const trees = [], bushes = [], rocks = [], fence = [];
+      for (let z = a; z < b; z += 3 + rng() * 4) {
+        for (const sd of [-1, 1]) {
+          if (rng() < 0.6) { const s = 0.9 + rng() * 1.3; trees.push([sd * (H + 4 + rng() * 30), -0.6, z, s, s, s, rng() * 6]); }
+          if (rng() < 0.5) { const s = 0.5 + rng() * 0.8; bushes.push([sd * (H + 2 + rng() * 26), -0.5, z + rng() * 3, s * 1.4, s, s * 1.4]); }
+          if (rng() < 0.25) { const s = 0.4 + rng() * 0.9; rocks.push([sd * (H + 2 + rng() * 28), -0.45, z + rng() * 3, s, s * 0.7, s, rng() * 6]); }
+        }
+      }
+      for (let z = a; z < b; z += 3) for (const sd of [-1, 1]) fence.push([sd * (H + 1.4), -0.15, z, 1, 1, 1]);
+      const tree = mergeGeometries([
+        paint(new THREE.CylinderGeometry(0.2, 0.28, 1.6, 6).translate(0, 0.8, 0), 0x7a5230),
+        paint(new THREE.IcosahedronGeometry(1.25, 1).translate(0, 2.5, 0), 0x3f9a4a),
+        paint(new THREE.IcosahedronGeometry(0.85, 1).translate(0.7, 2.0, 0.3), 0x4fb05a),
+      ].map((g) => (g.index ? g.toNonIndexed() : g)));
+      instanced(tree, this.mats.vc, trees);
+      instanced(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0x4a9c48, flatShading: true }), bushes);
+      instanced(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0x9aa0a8, flatShading: true }), rocks);
+      const post = mergeGeometries([
+        new THREE.BoxGeometry(0.16, 0.9, 0.16).translate(0, 0.0, 0),
+        new THREE.BoxGeometry(0.08, 0.1, 3).translate(0, 0.25, 0),
+        new THREE.BoxGeometry(0.08, 0.1, 3).translate(0, -0.05, 0),
+      ]);
+      instanced(post, this.mats.wood, fence);
+    } else if (name === 'city') {
+      // Blocks of buildings with lit windows, lamp posts along the road
+      const towers = [], lamps = [];
+      for (let z = a; z < b; z += 6 + rng() * 5) {
+        for (const sd of [-1, 1]) {
+          for (let row = 0; row < 3; row++) {
+            if (rng() < 0.2) continue;
+            const w = 4 + rng() * 4, d = 4 + rng() * 3, h = 5 + rng() * 14 + row * 5;
+            towers.push([sd * (H + 6 + row * 11 + rng() * 3), h / 2 - 0.6, z, w, h, d, 0]);
+          }
+        }
+      }
+      for (let z = a; z < b; z += 14) for (const sd of [-1, 1]) lamps.push([sd * (H + 1.3), 0, z, 1, 1, 1]);
+      const tex = T.windowTexture();
+      const bm = instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map: tex }), towers);
+      const tints = [0xd9dee8, 0xc9b8a8, 0xa9c0d8, 0xe8d9b8, 0xb8c4b0];
+      if (bm) towers.forEach((_, i) => bm.setColorAt(i, this.tmpC.setHex(tints[i % tints.length])));
+      const lamp = mergeGeometries([
+        paint(new THREE.CylinderGeometry(0.07, 0.09, 3.6, 6).translate(0, 1.8, 0), 0x3a3f4b),
+        paint(new THREE.BoxGeometry(0.7, 0.12, 0.25).translate(0, 3.6, 0), 0x3a3f4b),
+        paint(new THREE.SphereGeometry(0.2, 8, 6).translate(0, 3.45, 0), 0xfff2b0),
+      ]);
+      instanced(lamp, this.mats.vc, lamps);
     }
   }
 
@@ -397,6 +518,7 @@ export class Renderer {
 
   buildHazards(G, hazards) {
     this.saws = [];
+    this.walls = [];
     const m = this.mats;
     const spikes = [];
     for (const h of hazards) {
@@ -419,6 +541,23 @@ export class Renderer {
         grp.position.set(h.x, 0.3, -h.z);
         G.add(grp);
         this.saws.push({ h, grp });
+      } else if (h.kind === 'walls') {
+        const track = new THREE.Mesh(new THREE.BoxGeometry(this.half * 2, 0.03, h.d + 0.3), m.dark);
+        track.position.set(0, 0.016, -h.z);
+        G.add(track);
+        const pair = [-1, 1].map((sx) => {
+          const g = new THREE.Group();
+          const body = new THREE.Mesh(new THREE.BoxGeometry(12, 1.5, h.d), m.concrete);
+          body.position.set(sx * 6, 0.75, 0);
+          const face = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.6, h.d + 0.1), m.hazard);
+          face.position.set(sx * 0.1, 0.8, 0);
+          g.add(body, face);
+          g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+          g.position.z = -h.z;
+          G.add(g);
+          return g;
+        });
+        this.walls.push({ h, pair });
       } else {
         const plate = new THREE.Mesh(new THREE.BoxGeometry(h.w, 0.06, h.d), m.dark);
         plate.position.set(h.x, 0.03, -h.z);
@@ -690,6 +829,24 @@ export class Renderer {
           if (lost++ < 30) this.burst(e.x, 0.4, e.z, 0x4f9bff, Math.min(10, 3 + e.n), 2.5, 0.9, 0.5);
           lostN += e.n;
           break;
+        case 'coin':
+          if (sparks++ < 8) this.burst(e.x, 0.7, e.z, 0xffd23a, 3, 3, 0.6, 0.3);
+          break;
+        case 'heal':
+          this.float('+' + e.n + ' ✚', e.x, 2, e.z, 'heal');
+          this.burst(e.x, 0.6, e.z, 0x4fe08a, 14, 3.5, 0.9, 0.6);
+          break;
+        case 'tankBlock':
+          this.float('BLOCKED ' + e.n, sim.squad.x, 2.4, sim.squad.z + sim.squad.Rz, 'heal');
+          this.burst(e.x, 0.8, e.z, 0xf2b01e, 14, 4, 1.1, 0.5);
+          break;
+        case 'snipe': {
+          // A dotted white tracer from the sniper to the target
+          const q = sim.squad, x0 = q.x - q.Rx * 0.7 - 0.5, z0 = q.z - q.Rz * 0.7;
+          for (let i = 1; i <= 10 && this.fx.length < MAXFX; i++) this.fx.push({ x: x0 + ((e.x - x0) * i) / 10, y: 0.7, z: z0 + ((e.z - z0) * i) / 10, vx: 0, vy: 1.2, vz: 0, life: 0.16, max: 0.16, size: 0.7, c: 0xffffff });
+          this.burst(e.x, 0.6, e.z, 0xffffff, 5, 3, 0.8, 0.3);
+          break;
+        }
         case 'blocked':
           if (sparks++ < 6) this.burst(e.x, 0.6, e.z, 0x8fe8ff, 4, 3, 0.8, 0.35);
           break;
@@ -839,6 +996,30 @@ export class Renderer {
 
     // Saws and moving gates
     for (const sw of this.saws) { sw.grp.position.x = sw.h.x; sw.grp.rotation.y = -t * 14; }
+    for (const w of this.walls) { w.pair[0].position.x = w.h.c - w.h.half; w.pair[1].position.x = w.h.c + w.h.half; }
+
+    // Coins
+    let nc = 0;
+    for (const c of sim.pickups) {
+      if (!c.alive || nc >= MAXCOIN || c.z < q.z - 12 || c.z > q.z + 75) continue;
+      e.set(0, t * 4 + c.z, 0);
+      const cs = c.v > 1 ? 1.25 : 1;
+      m4.compose(v.set(c.x, 0.55 + Math.sin(t * 3 + c.z) * 0.08, -c.z), quat.setFromEuler(e), s.set(cs, cs, cs));
+      this.coins.setMatrixAt(nc++, m4);
+    }
+    this.coins.count = nc;
+    this.coins.instanceMatrix.needsUpdate = true;
+
+    // Heroes: tank in front, medic and sniper at the back corners
+    const hp = { tank: [0, q.Rz + 0.7], medic: [q.Rx * 0.7 + 0.5, -q.Rz * 0.7 - 0.4], sniper: [-q.Rx * 0.7 - 0.5, -q.Rz * 0.7 - 0.4] };
+    for (const id in this.heroes) {
+      const m = this.heroes[id];
+      m.visible = !!sim.heroes[id] && q.count > 0;
+      if (!m.visible) continue;
+      m.position.set(q.x + hp[id][0], moving ? Math.abs(Math.sin(t * 12 + hp[id][0])) * 0.12 : 0, -(q.z + hp[id][1]));
+      m.rotation.y = Math.PI;
+    }
+    this.lamp.position.set(q.x, 7, -(q.z + 5));
 
     // Shield bubble
     const shielded = sim.shieldT > 0 && q.count > 0;
@@ -925,10 +1106,12 @@ export class Renderer {
       if (k2 >= 1) { this.scene.remove(r.mesh); r.mesh.geometry.dispose(); this.rings.splice(i, 1); }
     }
 
-    if (this.water) this.water.material.color.setHex(this.theme.water).offsetHSL(0, 0, Math.sin(t * 0.8) * 0.015);
+    for (const p of this.pulse) p.mat.color.setHex(p.hex).offsetHSL(0, 0, Math.sin(t * p.speed) * p.amp);
+    this.applyTheme(q.z);
 
     // Camera follows the squad, pulls back for big squads and bosses
-    const pull = Math.min(5, q.R * 0.5) + (sim.boss.active && sim.boss.alive ? 2 : 0) + (this.portrait ? 1.5 : 0);
+    // A long column needs more room than a round squad, and so does a wide road
+    const pull = Math.min(6, Math.max(q.R, q.Rz * 0.75) * 0.5) + (sim.boss.active && sim.boss.alive ? 2 : 0) + (this.portrait ? 1.5 : 0) + Math.max(0, this.half - 6) * 1.6;
     const cx = q.x * 0.45, cz = -q.z;
     v.set(cx, 11 + pull, cz + 8.5 + pull * 0.6);
     const snap = this.camPos.distanceTo(v) > 25;
@@ -954,6 +1137,7 @@ export class Renderer {
 
   updateBoss(sim, dt) {
     const B = sim.boss, b = this.boss;
+    if (!b) return;
     const t = this.time;
     if (!B.alive) {
       // Topple backwards and sink

@@ -1,8 +1,9 @@
 // Headless balance test: bots play the levels with the pure simulation.
 // - a smart bot (good gates, best lane, steps around saws, spikes, iron balls and orbs) must win every level, buying upgrades with what it earns
 // - a lazy bot (stays in the middle, takes no gate on purpose) must lose from some level on
-import { buildLevel } from '../src/level.js';
-import { Sim } from '../src/sim.js';
+import { buildLevel, buildBonus } from '../src/level.js';
+import { Sim, wallHalf } from '../src/sim.js';
+import { PERKS, starsFor } from '../src/perks.js';
 import { upgradeCost, upgradeStats, UPGRADES } from '../src/upgrades.js';
 
 const DT = 1 / 60;
@@ -25,6 +26,7 @@ function goalX(sim, lanePref) {
   for (const s of sim.L.sections) {
     if (q.z + q.Rz > s.z0 - 14 && q.z - q.Rz < s.z1) {
       if (q.lane && q.lane.s === s) return q.targetX;
+      if (s.kind === 'fork') return lanePref === 'auto' || lanePref === 'gates' ? s.easyX : s.hardX;
       const barrier = sim.blocks.find((b) => b.kind === 'barrier' && b.z > s.z0 && b.z < s.z1);
       const gatesX = sim.gates.find((g) => g.z > s.z0 && g.z < s.z1 && !g.yellow).x;
       if (lanePref === 'auto') {
@@ -53,7 +55,10 @@ function danger(sim, x, balls) {
     const dz = h.z - q.z;
     if (dz < -q.Rz - 1 || dz > q.Rz + 7) continue;
     if (h.kind === 'spikes') d += overlap(h.x - h.w / 2, h.x + h.w / 2);
-    else {
+    else if (h.kind === 'walls') {
+      const half = wallHalf(h, sim.time + Math.max(0, dz - q.Rz) / 7);
+      d += overlap(-9, h.c - half) + overlap(h.c + half, 9);
+    } else {
       const t = Math.max(0, dz - q.Rz) / 7;
       const hx = h.x0 + h.amp * Math.sin(((sim.time + t) * Math.PI * 2) / h.period + h.phase);
       d += overlap(hx - h.r - 0.6, hx + h.r + 0.6);
@@ -76,15 +81,15 @@ function smartBot(sim, lanePref) {
   const balls = sim.enemies.filter((e) => e.straight && e.alive && e.active && e.z > q.z - q.Rz && e.z - q.z < 20);
   if (!balls.length && !sim.shots.length && !sim.hazards.some((h) => Math.abs(h.z - q.z) < q.Rz + 8)) return goal;
   let best = goal, bestCost = Infinity;
-  for (let x = -5.5; x <= 5.5; x += 0.5) {
+  for (let x = -sim.half + 0.5; x <= sim.half - 0.5; x += 0.5) {
     const cost = danger(sim, x, balls) * 4 + Math.abs(x - goal) * 0.6 + Math.abs(x - q.x) * 0.1;
     if (cost < bestCost) { bestCost = cost; best = x; }
   }
   return danger(sim, goal, balls) * 4 <= bestCost - Math.abs(best - goal) * 0.6 ? goal : best;
 }
 
-function play(n, stats, bot) {
-  const sim = new Sim(buildLevel(n), stats);
+function play(n, stats, bot, level = buildLevel(n)) {
+  const sim = new Sim(level, stats);
   let t = 0;
   const why = {};
   while (sim.state !== 'won' && sim.state !== 'lost' && t < 400) {
@@ -94,7 +99,7 @@ function play(n, stats, bot) {
     for (const e of sim.events) if (e.type === 'lost') why[e.why] = (why[e.why] ?? 0) + e.n;
     sim.events.length = 0;
   }
-  return { state: t >= 400 ? 'timeout' : sim.state, t: t.toFixed(0), coins: sim.coins, peak: sim.peak, left: sim.squad.count, lost: sim.lostTotal, boss: Math.round(sim.boss.hp), weapon: sim.weaponInfo.name, z: Math.round(sim.squad.z), why };
+  return { state: t >= 400 ? 'timeout' : sim.state, t: t.toFixed(0), coins: sim.coins, peak: sim.peak, left: sim.squad.count, lost: sim.lostTotal, boss: Math.round(sim.boss.hp), weapon: sim.weaponInfo.name, stars: starsFor(sim.squad.count, sim.lostTotal), z: Math.round(sim.squad.z), why };
 }
 
 let fails = 0;
@@ -124,7 +129,7 @@ for (let n = 1; n <= 15; n++) {
     best = runs.find((x) => x.r.state === 'won') ?? runs[0];
     r = best.r;
     if (verbose) for (const x of runs) console.log('   ', x.p.padEnd(8), JSON.stringify(x.r));
-    console.log(String(n).padStart(5), ' ', r.state.padEnd(7), String(r.t).padStart(5), String(r.peak).padStart(5), String(r.left).padStart(5), String(r.lost).padStart(5), String(Math.floor(r.coins)).padStart(6), ' ', r.weapon.padEnd(8), best.p, JSON.stringify(levels));
+    console.log(String(n).padStart(5), ' ', r.state.padEnd(7), String(r.t).padStart(5), String(r.peak).padStart(5), String(r.left).padStart(5), String(r.lost).padStart(5), String(Math.floor(r.coins)).padStart(6), ' ', r.weapon.padEnd(8), '★'.repeat(r.stars).padEnd(3), best.p, JSON.stringify(levels));
     wallet += Math.floor(r.coins) + (r.state === 'won' ? 10 * n : 0);
     spend();
     if (r.state === 'won') break;
@@ -139,6 +144,26 @@ console.log(`lazy bot lost ${lazyLost}/8 levels`);
 if (lazyLost < 3) { fails++; console.error('  ✗ too easy: a bot that never steers wins almost everything'); }
 // Level 1 must be winnable without upgrades by just following the gates
 if (play(1, upgradeStats({ start: 0, power: 0, rate: 0 }), (s) => smartBot(s, 'gates')).state !== 'won') { fails++; console.error('  ✗ level 1 too hard'); }
+
+// Everything switched on at once must still play through
+{
+  const perks = Object.fromEntries(PERKS.map((p) => [p.id, p.max]));
+  const base = upgradeStats({ start: 3, power: 2, rate: 2 });
+  for (const n of [4, 6]) {
+    const plain = play(n, base, (s) => smartBot(s, 'auto'));
+    const full = play(n, { ...base, perks, heroes: { medic: true, sniper: true, tank: true } }, (s) => smartBot(s, 'auto'));
+    console.log(`level ${n} with every perk and hero: ${full.state}, ${full.left} left (${plain.state}, ${plain.left} without)`);
+    if (full.state !== 'won') { fails++; console.error('  ✗ lost with every perk and hero'); }
+  }
+}
+// Bonus coin rush: following the trail reaches the finish line with most of the coins
+for (const n of [3, 9]) {
+  const L = buildBonus(n);
+  const total = L.coins.reduce((a, c) => a + c.v, 0);
+  const r = play(n, upgradeStats({ start: 2, power: 0, rate: 0 }), (s) => (s.pickups.find((c) => c.alive && c.z > s.squad.z && c.v === L.coins[0].v) ?? { x: 0 }).x, L);
+  console.log(`bonus after level ${n}: ${r.state}, ${Math.floor(r.coins)}/${total} coins`);
+  if (r.state !== 'won' || r.coins < total * 0.4) { fails++; console.error('  ✗ bonus level broken'); }
+}
 
 if (fails) { console.error(`${fails} failure(s)`); process.exit(1); }
 console.log('ok');

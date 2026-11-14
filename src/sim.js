@@ -33,7 +33,7 @@ const ENEMY = {
   boulder: { speed: 10, r: 1, power: 8, coins: 0, hp: [1, 0], wake: 46, straight: true, inv: true },
 };
 
-export const BOSS_NAMES = { crusher: 'CRUSHER', blaster: 'BLASTER', titan: 'TITAN' };
+export const BOSS_NAMES = { crusher: 'CRUSHER', blaster: 'BLASTER', titan: 'TITAN', none: '' };
 
 // Spacing of the sunflower formation, tighter for very large squads so there is always room to sidestep.
 const SP = 0.21, FULL = 380;
@@ -49,28 +49,43 @@ export function slot(i, n, out) {
   return out;
 }
 
+// Half width of the gap between two closing walls at time t: wide open about half of the time
+export function wallHalf(h, t) {
+  const s = 0.5 + 0.5 * Math.sin((t * TAU) / h.period + h.phase);
+  return h.min + (h.open - h.min) * Math.min(1, s * 1.6);
+}
+
 export class Sim {
   constructor(level, opts = {}) {
     this.L = level;
+    this.half = level.half ?? ROAD_HALF; // half width of the road
     const k = level.n - 1;
     this.k = k;
     this.rng = mulberry32(level.n * 31 + 7 + (opts.seed ?? 0));
     this.dmgMul = opts.dmgMul ?? 1;
     this.rateMul = opts.rateMul ?? 1;
+    // Perks (perks.js): how many times each one was picked. Heroes: which ones walk with the squad.
+    const P = (this.perks = { ricochet: 0, guard: 0, gates: 0, blast: 0, hazard: 0, sidearm: 0, power: 0, armor: 0, ...(opts.perks ?? {}) });
+    this.heroes = { medic: false, sniper: false, tank: false, ...(opts.heroes ?? {}) };
+    this.healPool = 0;
+    this.healT = 5;
+    this.snipeT = 1;
+    this.tankT = 0; // time before the tank can take another blow
     this.squad = { x: 0, z: 0, prevZ: 0, count: opts.start ?? 1, targetX: 0, speed: 0, scale: 1, lane: null, R: 0.5, Rx: 0.5, Rz: 0.5, engaged: false };
-    this.weapon = 0;
+    this.weapon = P.sidearm ? 1 + (level.n % 2) : 0;
     this.stars = 0; // picking the gun you already hold makes it stronger (late levels offer the top guns twice)
     this.rageT = 0; // double fire rate
-    this.shieldT = 0; // no losses
+    this.shieldT = 4 * P.guard; // no losses
     // A gate you can shoot climbs one step per hit, up to the opposite of where it started
     this.gates = level.gates.map((g) => ({ ...g, x0: g.x, used: false, acc: 0, step: 2 + k * 0.6, max: Math.max(5, Math.abs(g.v)) }));
     this.blocks = level.blocks.map((b) => ({ ...b, maxHp: b.hp, alive: true }));
     this.enemies = level.enemies.map((e) => this.makeEnemy(e));
-    this.hazards = level.hazards.map((h) => ({ ...h, x: h.x ?? h.x0, cool: 0 }));
+    this.hazards = level.hazards.map((h) => ({ ...h, x: h.x ?? h.x0 ?? h.c, open: this.half + 0.5, half: this.half, cool: 0 }));
+    this.pickups = (level.coins ?? []).map((c) => ({ ...c, alive: true }));
     this.shots = []; // enemy projectiles
     const B = level.boss;
     this.boss = {
-      x: B.x, z: B.z, hp: B.hp, maxHp: B.hp, big: B.big, type: B.type ?? 'crusher', alive: true, active: false, enraged: false,
+      x: B.x, z: B.z, hp: B.hp, maxHp: B.hp, big: B.big, type: B.type ?? 'crusher', alive: B.type !== 'none', active: false, enraged: false,
       state: 'idle', t: 0, cool: 1.5, summonT: 5, keep: B.type === 'blaster' ? 6 : 2.4,
       power: Math.round(8 + 4 * k + (B.big ? 10 : 0)), orbPower: 2 + Math.floor(k * 0.6), smashR: B.big ? 2.6 : 2.2,
     };
@@ -153,12 +168,33 @@ export class Sim {
     return n;
   }
 
+  // Soldiers caught by a pair of closing walls: in its depth, outside its gap
+  countOutside(h) {
+    const q = this.squad, p = this._p;
+    if (Math.abs(h.z - q.z) > q.Rz + h.d) return 0;
+    if (q.x - q.Rx > h.c - h.half && q.x + q.Rx < h.c + h.half) return 0;
+    let n = 0;
+    for (let i = 0; i < q.count; i++) {
+      this.soldierPos(i, p);
+      if (Math.abs(p.z - h.z) < h.d / 2 && Math.abs(p.x - h.c) > h.half) n++;
+    }
+    return n;
+  }
+
   // The squad loses n soldiers, unless the shield is up
   lose(n, x, z, why = 'enemy') {
     const q = this.squad;
     if (n <= 0 || q.count <= 0) return 0;
     if (this.shieldT > 0) { this.emit({ type: 'blocked', x, z }); return 0; }
+    // The tank steps in front of one heavy blow every few seconds
+    if (this.heroes.tank && this.tankT <= 0 && n >= 3) { this.tankT = 8; this.emit({ type: 'tankBlock', x, z, n: Math.round(n) }); return 0; }
+    if (this.perks.armor) {
+      const keep = n * (1 - 0.08 * this.perks.armor);
+      n = Math.floor(keep) + (this.rng() < keep % 1 ? 1 : 0);
+      if (n <= 0) return 0;
+    }
     const lost = Math.min(q.count, Math.round(n));
+    this.healPool += lost;
     q.count -= lost;
     this.lostTotal += lost;
     this.emit({ type: 'lost', n: lost, x, z, why });
@@ -176,6 +212,7 @@ export class Sim {
     }
     if (this.rageT > 0) this.rageT -= dt;
     if (this.shieldT > 0) this.shieldT -= dt;
+    if (this.tankT > 0) this.tankT -= dt;
     this.updateSquad(dt);
     this.updateGates();
     this.shoot(dt);
@@ -184,6 +221,9 @@ export class Sim {
     this.updateShots(dt);
     this.updateHazards(dt);
     this.updateBoss(dt);
+    this.updatePickups();
+    this.updateHeroes(dt);
+    if (this.L.bonus && this.squad.z >= this.L.finish) this.finish('won');
     this.peak = Math.max(this.peak, this.squad.count);
     if (this.squad.count <= 0) this.finish('lost');
   }
@@ -201,7 +241,7 @@ export class Sim {
     const R = radius(q.count);
     q.R = R;
     // Lanes: squeeze the formation to the lane width
-    let bounds = [-ROAD_HALF, ROAD_HALF];
+    let bounds = [-this.half, this.half];
     if (q.lane && q.z - q.Rz > q.lane.s.z1) q.lane = null;
     if (!q.lane) {
       for (const s of this.L.sections)
@@ -209,7 +249,9 @@ export class Sim {
     }
     if (q.lane) bounds = q.lane.s.lanes[q.lane.i];
     const half = (bounds[1] - bounds[0]) / 2 - 0.12;
-    const want = Math.max(0.28, Math.min(1, half / R));
+    // A big squad closes ranks into a column, never wider than 42% of the road: whatever its size,
+    // there is room to pass beside a spike strip, a saw or through a pair of walls
+    const want = Math.max(0.28, Math.min(1, half / R, (this.half * 0.42) / R));
     q.scale += (want - q.scale) * Math.min(1, dt * 6);
     q.Rx = R * q.scale;
     q.Rz = R / q.scale;
@@ -256,7 +298,7 @@ export class Sim {
       if (q.prevZ < g.z && q.z >= g.z && Math.abs(q.x - g.x) < g.w / 2) {
         const before = q.count;
         if (g.op === 'x') q.count = Math.floor(q.count * g.v);
-        else q.count = Math.max(0, q.count + Math.round(g.v));
+        else q.count = Math.max(0, q.count + Math.round(g.v > 0 ? g.v * (1 + 0.1 * this.perks.gates) : g.v));
         g.used = true;
         if (g.group >= 0) for (const o of this.gates) if (o.group === g.group && o !== g) { o.used = true; o.skipped = true; }
         this.emit({ type: 'gate', gate: g, delta: q.count - before, x: g.x, z: g.z });
@@ -300,7 +342,7 @@ export class Sim {
       for (let j = 0; j < W.pellets; j++) {
         const fan = W.pellets > 1 ? W.fan * ((j / (W.pellets - 1)) * 2 - 1) : 0;
         const slope = aim + fan + (this.rng() - 0.5) * 2 * W.spread;
-        this.bullets.push({ x: p.x, z: p.z + 0.35, slope, end: p.z + W.range * (0.85 + this.rng() * 0.15), dmg, alive: true, w: this.weapon, speed: W.speed, pierce: W.pierce, splash: W.splash, hitZ: -Infinity });
+        this.bullets.push({ x: p.x, z: p.z + 0.35, slope, end: p.z + W.range * (0.85 + this.rng() * 0.15), dmg, alive: true, w: this.weapon, speed: W.speed, pierce: W.pierce, splash: W.splash, hitZ: -Infinity, dmg0: dmg, rico: false });
       }
       fired++;
     }
@@ -368,7 +410,13 @@ export class Sim {
         const d = Math.min(b.dmg, e.hp);
         this.damageEnemy(e, d);
         b.dmg -= d;
-        if (e.blocks || b.dmg <= 1e-6) { b.alive = false; break; }
+        if (e.blocks || b.dmg <= 1e-6) {
+          b.alive = false;
+          // Ricochet perk: the spent bullet may bounce off towards the others
+          if (!b.rico && this.perks.ricochet && this.rng() < 0.2 * this.perks.ricochet)
+            this.bullets.push({ ...b, x: e.x, z: e.z + 0.05, slope: (this.rng() - 0.5) * 1.6, end: e.z + 7, dmg: b.dmg0 * 0.7, alive: true, rico: true });
+          break;
+        }
       }
       if (!b.alive) continue;
       if (stop && z1 >= stopZ) {
@@ -411,6 +459,12 @@ export class Sim {
     if (byBullet) { this.coins += e.coins; this.kills++; }
     this.emit({ type: 'kill', x: e.x, z: e.z, kind: e.kind, byBullet });
     if (e.blast && byBullet) this.explode(e.x, e.z, e.blast + 0.4, 6 + 5 * this.k);
+    // Explosive rounds perk: some kills go off (not the ones caused by such a blast, to keep chains short)
+    else if (byBullet && this.perks.blast && !this._chain && this.rng() < 0.05 * this.perks.blast) {
+      this._chain = true;
+      this.explode(e.x, e.z, 1.3, 3 + 2 * this.k);
+      this._chain = false;
+    }
   }
 
   hitBlock(o, d) {
@@ -432,10 +486,10 @@ export class Sim {
       this.coins += r.v;
       text = '+' + r.v + ' ¢';
     } else if (r.type === 'rage') {
-      this.rageT = 8;
+      this.rageT = 8 * (1 + 0.4 * this.perks.power);
       text = 'RAGE! ×2 FIRE';
     } else if (r.type === 'shield') {
-      this.shieldT = 7;
+      this.shieldT = 7 * (1 + 0.4 * this.perks.power);
       text = 'SHIELD!';
     } else if (r.type === 'bomb') {
       text = 'AIRSTRIKE!';
@@ -455,7 +509,7 @@ export class Sim {
     }
     for (const s of this.shots) s.alive = false;
     const B = this.boss;
-    if (B.alive && B.active) this.hitBoss(B.maxHp * 0.12);
+    if (B.alive && B.active) this.hitBoss(B.maxHp * 0.12 * (1 + 0.4 * this.perks.power));
   }
 
   hitGate(g, d) {
@@ -524,7 +578,7 @@ export class Sim {
         if (s) {
           const [a, b] = s.lanes[this.laneIndex(s, e.x)];
           e.x = Math.max(a + 0.2, Math.min(b - 0.2, e.x));
-        } else e.x = Math.max(-ROAD_HALF + 0.2, Math.min(ROAD_HALF - 0.2, e.x));
+        } else e.x = Math.max(-this.half + 0.2, Math.min(this.half - 0.2, e.x));
       }
       // Contact with the squad: one for one, more for the big ones
       const nx = (e.x - sx) / (ex2 + e.r * 0.5), nz = (e.z - sz) / (ez2 + e.r * 0.5);
@@ -553,7 +607,7 @@ export class Sim {
       if (!s.alive) continue;
       s.x += s.vx * dt;
       s.z += s.vz * dt;
-      if (s.z < q.z - 12 || Math.abs(s.x) > ROAD_HALF + 1) { s.alive = false; continue; }
+      if (s.z < q.z - 12 || Math.abs(s.x) > this.half + 1) { s.alive = false; continue; }
       const nx = (s.x - q.x) / (q.Rx + s.r), nz = (s.z - q.z) / (q.Rz + s.r);
       if (nx * nx + nz * nz < 1) {
         s.alive = false;
@@ -571,16 +625,62 @@ export class Sim {
     const q = this.squad;
     for (const h of this.hazards) {
       if (h.kind === 'saw') h.x = h.x0 + h.amp * Math.sin((this.time * TAU) / h.period + h.phase);
+      else if (h.kind === 'walls') h.half = wallHalf(h, this.time);
       if (h.cool > 0) { h.cool -= dt; continue; }
       if (Math.abs(h.z - q.z) > q.Rz + 2) continue;
-      const n = h.kind === 'saw' ? this.countInside(h.x, h.z, h.r) : this.countInside(h.x, h.z, h.w / 2, h.d / 2);
+      const n = h.kind === 'saw' ? this.countInside(h.x, h.z, h.r) : h.kind === 'walls' ? this.countOutside(h) : this.countInside(h.x, h.z, h.w / 2, h.d / 2);
       if (!n) continue;
-      if (h.budget === undefined) { h.budget = Math.max(3, Math.ceil(q.count * 0.125)); h.bite = Math.max(1, Math.ceil(h.budget / 5)); }
+      if (h.budget === undefined) { h.budget = Math.max(3, Math.ceil(q.count * 0.125 * (1 - 0.2 * this.perks.hazard))); h.bite = Math.max(1, Math.ceil(h.budget / 5)); }
       h.cool = 0.15;
       const x = h.kind === 'saw' ? h.x : q.x;
       if (h.budget <= 0) continue; // it has taken its share: the rest of the squad squeezes past
       this.emit({ type: 'hazard', kind: h.kind, x, z: h.z });
       h.budget -= this.lose(Math.min(n, h.bite, h.budget), x, h.z, h.kind);
+    }
+  }
+
+  updatePickups() {
+    const q = this.squad;
+    for (const c of this.pickups) {
+      if (!c.alive || Math.abs(c.z - q.z) > q.Rz + 0.5) continue;
+      const nx = (c.x - q.x) / (q.Rx + 0.35), nz = (c.z - q.z) / (q.Rz + 0.35);
+      if (nx * nx + nz * nz > 1) continue;
+      c.alive = false;
+      this.coins += c.v;
+      this.emit({ type: 'coin', x: c.x, z: c.z });
+    }
+  }
+
+  updateHeroes(dt) {
+    const q = this.squad, H = this.heroes;
+    if (q.count <= 0) return;
+    // Medic: every five seconds, puts back on their feet 30% of those who fell since the last round
+    if (H.medic) {
+      this.healT -= dt;
+      if (this.healT <= 0) {
+        this.healT = 5;
+        const n = Math.floor(this.healPool * 0.3);
+        this.healPool = 0;
+        if (n > 0) { q.count += n; this.emit({ type: 'heal', n, x: q.x, z: q.z }); }
+      }
+    }
+    // Sniper: one heavy shot at the nastiest enemy in sight
+    if (H.sniper) {
+      this.snipeT -= dt;
+      if (this.snipeT <= 0) {
+        const reg = this.squadRegion();
+        let best = null, score = 0;
+        for (const e of this.enemies) {
+          if (!e.alive || !e.active || e.inv || e.z < q.z || e.z - q.z > 26) continue;
+          const sc = e.fires ? 5 : e.blast ? 4 : e.blocks ? 3 : e.kind === 'brute' ? 2 : 0;
+          if (sc > score && this.regionOf(e.x, e.z) === reg) { score = sc; best = e; }
+        }
+        const B = this.boss;
+        const dmg = (10 + 8 * this.k) * this.dmgMul;
+        if (best) { this.snipeT = 1.2; this.emit({ type: 'snipe', x: best.x, z: best.z }); this.damageEnemy(best, dmg); }
+        else if (B.alive && B.active && B.z - q.z < 26) { this.snipeT = 1.2; this.emit({ type: 'snipe', x: B.x, z: B.z - 0.9 }); this.hitBoss(dmg); }
+        else this.snipeT = 0.2;
+      }
     }
   }
 

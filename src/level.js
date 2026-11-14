@@ -1,17 +1,18 @@
 // Procedural level generator. Pure data, no rendering: used by the game and the headless tests.
-// The road runs along +z, x is across (−ROAD_HALF … +ROAD_HALF).
+// The road runs along +z, x is across. A level is laid out on a road of half width ROAD_HALF, then
+// stretched or squeezed to its own width (L.half), so every layout keeps its proportions.
 // A level is an opening, then pairs of "danger" segments (waves, hazards) and "growth" segments
 // (gates, jars, guns, power-ups) drawn from pools that open up with the level number, then the boss.
 
 export const ROAD_HALF = 6;
-export const THEMES = ['desert', 'bridge', 'snow'];
+export const THEMES = ['desert', 'meadow', 'bridge', 'night', 'snow', 'city', 'lava'];
 const LANE_WALL = 0.16; // half thickness of a lane wall
 
 // Guns offered at the first, second and third pick-up of a level (indexes into WEAPONS, sim.js)
 export const WEAPON_TIERS = [[1, 2], [3, 4, 5], [6, 7]];
 
 // Level at which each danger segment first appears
-const DANGERS = { wave: 1, spikes: 1, saws: 2, runners: 2, boulders: 3, shields: 3, bombers: 4, snipers: 4 };
+const DANGERS = { wave: 1, spikes: 1, saws: 2, runners: 2, boulders: 3, shields: 3, bombers: 4, snipers: 4, fork: 5, walls: 6 };
 const GROWTHS = { pair: 1, jar: 1, mult: 2, moving: 2, power: 2, triple: 3 };
 
 export function mulberry32(a) {
@@ -29,7 +30,8 @@ export function buildLevel(n) {
   const rng = mulberry32(n * 9973 + 17);
   const k = n - 1;
   const pick = (arr) => arr[Math.floor(rng() * arr.length)];
-  const L = { n, theme: THEMES[k % THEMES.length], gates: [], blocks: [], enemies: [], hazards: [], sections: [], boss: null, length: 0 };
+  const L = { n, theme: THEMES[k % THEMES.length], gates: [], blocks: [], enemies: [], hazards: [], coins: [], sections: [], boss: null, length: 0 };
+  const coin = (x, z) => L.coins.push({ x, z, v: 1 + Math.floor(k / 3) });
   let gid = 0, group = 0, bgroup = 0;
 
   const gate = (x, z, w, op, v, opts = {}) => L.gates.push({ id: gid++, x, z, w, op, v, group: opts.group ?? -1, shootable: !!opts.shootable, yellow: !!opts.yellow, move: opts.move ?? null });
@@ -120,9 +122,14 @@ export function buildLevel(n) {
     // Saw blades sweeping across the road
     saws(z) {
       const c = 2 + Math.min(3, Math.floor(k / 2));
-      for (let i = 0; i < c; i++)
-        L.hazards.push({ kind: 'saw', x0: 0, z: z + i * 7, amp: 4.6, period: Math.max(1.7, 2.9 - 0.1 * k), phase: i * 2.1 + rng() * 0.6, r: 0.95 });
+      // Each blade sweeps one half of the road, so there is always a side to go to, whatever the squad size
+      let side = rng() < 0.5 ? -1 : 1;
+      for (let i = 0; i < c; i++) {
+        L.hazards.push({ kind: 'saw', x0: side * 2.9, z: z + i * 7, amp: 2.3, period: Math.max(1.3, 2.2 - 0.07 * k), phase: i * 2.1 + rng() * 0.6, r: 0.95 });
+        if (rng() < 0.7) side = -side;
+      }
       gate(pick([-3.6, 3.6]), z + c * 7 - 3.5, 4, '+', 5 + 3 * k, { yellow: true });
+      for (let i = 0; i < c * 3; i++) coin(4.2 * Math.sin(i * 0.9), z + 2 + i * 2.2);
       return z + c * 7 + 6;
     },
     // Spike strips to slalom around
@@ -147,9 +154,43 @@ export function buildLevel(n) {
         let x;
         do x = pick([-4.5, -1.5, 1.5, 4.5]); while (x === last);
         last = x;
-        foe('boulder', x, z + 26 + i * 5.5);
+        foe('boulder', x, z + 26 + i * 7.5);
+        coin(-x, z + 3 + i * 7.5);
       }
-      return z + c * 5.5 + 10;
+      return z + c * 7.5 + 10;
+    },
+
+    // The road forks: an easy side with small rewards, a guarded side with big ones
+    fork(z, f) {
+      const len = 40, z1 = z + len;
+      const m = rng() < 0.5 ? -1 : 1;
+      L.sections.push({ kind: 'fork', z0: z, z1, walls: [0], lanes: [[-ROAD_HALF, -LANE_WALL], [LANE_WALL, ROAD_HALF]], easyX: -3 * m, hardX: 3 * m });
+      const side = (s, a, b) => (s > 0 ? [a, b] : [-b, -a]);
+      // Easy side
+      horde(...side(-m, 0.6, 5.6), z + 10, Math.max(1, Math.round((1 + k / 2) * f)), 8, 0);
+      gate(-3 * m, z + 22, 5.2, '+', 4 + 2 * k);
+      gate(-3 * m, z + 32, 5.2, '+', 4 + 2 * k);
+      // Hard side: shields, brutes, a horde, then the loot
+      for (let i = 0; i < 3; i++) foe('shield', m * (1.3 + i * 1.7), z + 8);
+      for (let i = 0; i < Math.min(6, 2 + Math.floor(k / 2)); i++) foe('brute', m * (1 + rng() * 4.4), z + 11 + rng() * 3);
+      horde(...side(m, 0.6, 5.6), z + 15, Math.max(2, Math.round((4 + 2 * k) * f)), 8, 0);
+      for (let i = 0; i < 8; i++) coin(m * (1.6 + (i % 2) * 2.8), z + 6 + i * 2.6);
+      block('jar', m * 1.8, z + 31, 2.2, 2.2, 30 + 30 * k, { type: 'add', v: 24 + 10 * k });
+      gate(m * 4.2, z + 33, 3.2, '+', 30 + 14 * k, { yellow: true });
+      return z1 + 12;
+    },
+    // Walls sliding in from both sides, leaving a gap that moves from one pair to the next
+    walls(z) {
+      const c = 3 + Math.min(3, Math.floor(k / 3));
+      let last = 9;
+      for (let i = 0; i < c; i++) {
+        let x;
+        do x = pick([-3, 0, 3]); while (x === last);
+        last = x;
+        L.hazards.push({ kind: 'walls', c: x, z: z + i * 9, d: 1.5, min: Math.max(2.75, 3.2 - 0.05 * k), period: Math.max(2, 3.2 - 0.08 * k), phase: rng() * 6.28 });
+        for (let j = 0; j < 3; j++) coin(x, z + i * 9 - 1.5 + j * 1.5);
+      }
+      return z + c * 9 + 4;
     },
   };
 
@@ -239,5 +280,65 @@ export function buildLevel(n) {
   const big = type === 'titan';
   L.boss = { x: 0, z, hp: Math.round(500 * (1 + k) ** 1.7 * (big ? 1.4 : 1)), big, type };
   L.length = z + 12;
+
+  // Scenery changes along the way: two or three stretches, each with its own theme
+  const nz = L.length > 430 ? 3 : 2;
+  L.zones = [];
+  let th = L.theme;
+  for (let i = 0; i < nz; i++) {
+    L.zones.push({ z0: (L.length * i) / nz, z1: (L.length * (i + 1)) / nz, theme: th });
+    const prev = th;
+    do th = pick(THEMES); while (th === prev);
+  }
+
+  // Road width from level 3 on: wide, normal, narrow, normal, and round again
+  L.half = n < 3 ? ROAD_HALF : [7.5, ROAD_HALF, 5, ROAD_HALF][(n - 3) % 4];
+  const f = L.half / ROAD_HALF;
+  if (f !== 1) {
+    for (const g of L.gates) { g.x *= f; g.w *= f; if (g.move) g.move.amp *= f; }
+    for (const b of L.blocks) { b.x *= f; if (b.kind === 'barrier') b.w *= f; }
+    for (const e of L.enemies) e.x *= f;
+    for (const c of L.coins) c.x *= f;
+    for (const h of L.hazards) {
+      if (h.kind === 'saw') { h.x0 *= f; h.amp *= f; }
+      else if (h.kind === 'walls') { h.c *= f; h.min *= f; }
+      else { h.x *= f; h.w *= f; }
+    }
+    for (const s of L.sections) {
+      s.walls = s.walls.map((w) => w * f);
+      s.lanes = s.lanes.map(([a, b]) => [a * f, b * f]);
+      if (s.kind === 'fork') { s.easyX *= f; s.hardX *= f; }
+    }
+  }
+  return L;
+}
+
+// Coin rush between two levels: no enemies, no boss, a trail of coins weaving around saws and spikes.
+export function buildBonus(n) {
+  const rng = mulberry32(n * 4409 + 5);
+  const k = n - 1;
+  const L = { n, bonus: true, theme: THEMES[k % THEMES.length], gates: [], blocks: [], enemies: [], hazards: [], coins: [], sections: [], boss: null, length: 0 };
+  const v = 1 + Math.floor(k / 3);
+  const amp = 4.3, wl = 9 + rng() * 3, ph = rng() * 6.28;
+  const path = (z) => amp * Math.sin(z / wl + ph);
+  const end = 215;
+  for (let z = 12; z < end; z += 2.2) L.coins.push({ x: path(z), z, v });
+  // Hazards sit off the trail, where a lazy line would cut the corner
+  for (let z = 30; z < end - 10; z += 13 + rng() * 6) {
+    const x = path(z);
+    if (Math.abs(x) < 2) continue; // the trail is crossing the road: no room for a trap beside it
+    const o = x > 0 ? -1 : 1; // traps on the half of the road the trail is not on
+    if (rng() < 0.5) L.hazards.push({ kind: 'spikes', x: o * 3, z, w: 5.8, d: 1.1 });
+    else L.hazards.push({ kind: 'saw', x0: o * 2.6, z, amp: 2.4, period: 2.2, phase: rng() * 6.28, r: 0.95 });
+    // A handful of extra coins behind the hazard for the brave
+    for (let i = 0; i < 4; i++) L.coins.push({ x: o * (2.5 + (i % 2) * 1.6), z: z + 2.5 + Math.floor(i / 2) * 1.6, v: v * 2 });
+  }
+  let gid = 0;
+  for (let z = 50; z < end; z += 55) L.gates.push({ id: gid++, x: path(z), z, w: 3.6, op: '+', v: 10 + 4 * k, group: -1, shootable: false, yellow: true, move: null });
+  L.half = ROAD_HALF;
+  L.zones = [{ z0: 0, z1: end + 20, theme: L.theme }];
+  L.finish = end + 8;
+  L.length = end + 20;
+  L.boss = { x: 0, z: L.finish, hp: 1, big: false, type: 'none' };
   return L;
 }

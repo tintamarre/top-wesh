@@ -139,6 +139,7 @@ export function concreteTexture(base = '#c9ccd2', speck = 0.07) {
   return t;
 }
 
+// One texture per stretch of scenery: each has its own repeat
 export function groundTexture(base, dots) {
   const c = canvas(512, 512);
   const g = c.getContext('2d');
@@ -239,5 +240,22 @@ export function emojiTexture(ch) {
   g.fillText(ch, 64, 70);
   const t = texOf(c);
   emojiCache.set(ch, t);
+  return t;
+}
+
+// Building front: rows of windows, some of them lit
+export function windowTexture() {
+  const c = canvas(128, 256);
+  const g = c.getContext('2d');
+  g.fillStyle = '#e9ecf2';
+  g.fillRect(0, 0, 128, 256);
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 4; x++) {
+      g.fillStyle = Math.random() < 0.3 ? '#ffe9a0' : '#5a6a84';
+      g.fillRect(8 + x * 30, 8 + y * 31, 22, 20);
+    }
+  const t = texOf(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1, 2);
   return t;
 }
