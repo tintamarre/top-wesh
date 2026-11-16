@@ -10,6 +10,8 @@ A squad-runner in the browser that makes fun of war games: you lead a gang of te
 - WESH! One button (or Space) makes the gang shout: grown-ups around are thrown back and stay dazed, chalk flies back at whoever threw it, homework balls roll off the road, and a boss loses the blow it was preparing. Six seconds to get your breath back.
 - From level 2 the Mum follows with her vacuum cleaner. She is slower than the gang, but she catches up whenever it stalls in front of a crowd, a jar or a barrier, and vacuums up the last rows. Break through fast, step aside or shout to send her back. She goes home when the boss shows up.
 - Gates count as soon as the first row reaches them: blue and yellow ones bring friends, purple ones multiply, red ones send friends home. Some red gates can be shot until they turn blue, some yellow gates slide from side to side, some come in threes.
+- Junctions: two or three times per level, three green signs stand side by side and the one you take decides the next stretch. Playground (small gates to weave through, little brothers, a jar), Back alley (no grown-ups, fat coins among the traps), Detention (two rows of jars behind their guards), Corner shop (gates that cost coins: friends, a star on the toy, power-ups, a lucky dip), Staff room (the hardest crowd, then a toy one tier above, a power-up and coins), Bike shed (scooters and three crowds to ride through). No two runs of a level need to be the same.
+- Orange gates change the gang instead of its size: half of the gang goes home and the others hit three times as hard, scooters for a few seconds (faster, never stopped by a crowd, grown-ups run over), or a lucky dip for a new toy.
 - Eight toys that behave differently: Spitballs, Water gun, Party popper (wide fan, short range), Foam darts (long range), Bubble gun (very fast), Deo spray (short cloud that goes through the ranks), Water balloons (splash), Laser pointer (goes through everything). Barrels and ice crates often come in pairs: the one you break is the one you get. From level 6 the top toys are offered twice: the same one again earns a star (+25% damage).
 - Power-up boxes: energy drink (double fire rate), headphones (nothing reaches you for a few seconds), bass drop (clears the road and dents the boss). Jars get friends out of detention.
 - A big gang closes ranks into a column no wider than 42% of the road, so whatever its size there is a free side to go to.
@@ -54,8 +56,8 @@ The code keeps the plain names of the genre (`grunt`, `brute`, `shield`, `bomber
 
 | File | Role |
 | --- | --- |
-| `src/level.js` | Seeded procedural level generator (pure data): danger and growth segments, unlock levels, boss type |
-| `src/sim.js` | Game logic: formation, gates, guns and bullets, enemies, hazards, power-ups, bosses. No rendering, so the tests can run it |
+| `src/level.js` | Seeded procedural level generator (pure data): danger and growth segments, junctions and their routes, unlock levels, boss type |
+| `src/sim.js` | Game logic: formation, gates, routes, shout, the Mum, guns and bullets, enemies, hazards, power-ups, bosses. No rendering, so the tests can run it |
 | `src/upgrades.js` | Permanent upgrades and their costs |
 | `src/perks.js` | Perks, heroes and the star rating |
 | `src/render.js` | Three.js scene: instanced soldiers (one mesh per enemy kind), bullets, orbs and particles, gates, blocks, hazards, boss, scenery |

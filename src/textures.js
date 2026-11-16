@@ -43,14 +43,19 @@ export const GATE_STYLES = {
   yellow: { top: '#ffe04d', bottom: '#f5b400', edge: '#a87400', text: '#fff' },
   red: { top: '#ff6b5e', bottom: '#d42f26', edge: '#8a1510', text: '#fff' },
   purple: { top: '#b98cff', bottom: '#7a3ff0', edge: '#4a1fa0', text: '#fff' },
+  green: { top: '#5fd68a', bottom: '#1f9a55', edge: '#0f6235', text: '#fff' }, // signs of a junction
+  orange: { top: '#ffa24d', bottom: '#f06a12', edge: '#9a3c00', text: '#fff' }, // gates that change the gang
+  teal: { top: '#4fd6d6', bottom: '#12939a', edge: '#0a5a60', text: '#fff' }, // the corner shop
 };
 
 export function gateText(g) {
+  if (g.label) return g.label;
   if (g.op === 'x') return '×' + g.v;
   return (g.v >= 0 ? '+' : '−') + Math.abs(Math.round(g.v));
 }
 
 export function gateStyle(g) {
+  if (g.style) return g.style;
   if (g.op === 'x') return 'purple';
   if (g.v < 0) return 'red';
   return g.yellow ? 'yellow' : 'blue';
@@ -73,7 +78,13 @@ export function drawGate(text, style, c = canvas(256, 112)) {
   g.fillStyle = 'rgba(255,255,255,.18)';
   roundRect(g, 12, 10, c.width - 24, c.height * 0.35, 10);
   g.fill();
-  outlinedText(g, text, c.width / 2, c.height / 2 + 4, text.length > 3 ? 64 : 76, s.text);
+  if (text.includes('\n')) {
+    // A sign: a title and what it means underneath, each shrunk to fit
+    const fit = (t, size) => { g.font = `${size}px ${FONT}`; return Math.min(size, (size * (c.width - 30)) / g.measureText(t).width); };
+    const [a, b] = text.split('\n');
+    outlinedText(g, a, c.width / 2, c.height * 0.36, fit(a, 38), s.text);
+    outlinedText(g, b, c.width / 2, c.height * 0.72, fit(b, 28), '#fff7d6');
+  } else outlinedText(g, text, c.width / 2, c.height / 2 + 4, text.length > 3 ? 64 : 76, s.text);
   return c;
 }
 

@@ -3,6 +3,9 @@
 // stretched or squeezed to its own width (L.half), so every layout keeps its proportions.
 // A level is an opening, then pairs of "danger" segments (waves, hazards) and "growth" segments
 // (gates, jars, guns, power-ups) drawn from pools that open up with the level number, then the boss.
+// Two or three times per level the road reaches a junction: three signs, each one opening a different
+// stretch (ROUTES). Everything on those stretches carries a `route` number (junction * 10 + option) and
+// only shows up once its sign has been taken.
 
 export const ROAD_HALF = 6;
 export const THEMES = ['desert', 'meadow', 'bridge', 'night', 'snow', 'city', 'lava'];
@@ -14,6 +17,22 @@ export const WEAPON_TIERS = [[1, 2], [3, 4, 5], [6, 7]];
 // Level at which each danger segment first appears
 const DANGERS = { wave: 1, spikes: 1, saws: 2, runners: 2, boulders: 3, shields: 3, bombers: 4, snipers: 4, fork: 5, walls: 6 };
 const GROWTHS = { pair: 1, jar: 1, mult: 2, moving: 2, power: 2, triple: 3 };
+
+// Stretches offered at a junction, with the level they first appear at. The label is the sign: "title\nwhat you get".
+export const ROUTES = {
+  playground: { from: 1, label: '🛝 Playground\nfriends' },
+  alley: { from: 1, label: '🧱 Back alley\ncoins and traps' },
+  detention: { from: 1, label: '🔒 Detention\njars to break' },
+  shop: { from: 2, label: '🏪 Corner shop\nspend coins' },
+  staff: { from: 2, label: '☕ Staff room\nguarded top toy' },
+  bikes: { from: 3, label: '🛴 Bike shed\nrun them over' },
+};
+// Gates that change the gang instead of its size (their effects are in sim.js)
+export const FX = {
+  elite: '½ gang\ndamage ×3',
+  scooter: '🛴 Scooters\nrun them over',
+  swap: '🎲 Lucky dip\nnew toy',
+};
 
 export function mulberry32(a) {
   return function () {
@@ -30,11 +49,13 @@ export function buildLevel(n) {
   const rng = mulberry32(n * 9973 + 17);
   const k = n - 1;
   const pick = (arr) => arr[Math.floor(rng() * arr.length)];
-  const L = { n, theme: THEMES[k % THEMES.length], gates: [], blocks: [], enemies: [], hazards: [], coins: [], sections: [], boss: null, length: 0 };
-  const coin = (x, z) => L.coins.push({ x, z, v: 1 + Math.floor(k / 3) });
+  const L = { n, theme: THEMES[k % THEMES.length], gates: [], blocks: [], enemies: [], hazards: [], coins: [], sections: [], junctions: [], boss: null, length: 0 };
+  const coin = (x, z, mul = 1) => L.coins.push({ x, z, v: (1 + Math.floor(k / 3)) * mul });
   let gid = 0, group = 0, bgroup = 0;
 
-  const gate = (x, z, w, op, v, opts = {}) => L.gates.push({ id: gid++, x, z, w, op, v, group: opts.group ?? -1, shootable: !!opts.shootable, yellow: !!opts.yellow, move: opts.move ?? null });
+  // extra: what the special gates carry (fx, label, style, pick, buy, cost)
+  const gate = (x, z, w, op, v, opts = {}) => L.gates.push({ id: gid++, x, z, w, op, v, group: opts.group ?? -1, shootable: !!opts.shootable, yellow: !!opts.yellow, move: opts.move ?? null, ...(opts.extra ?? {}) });
+  const fxGate = (x, z, w, fx, grp = -1) => gate(x, z, w, 'fx', 0, { group: grp, extra: { fx, label: FX[fx], style: 'orange' } });
   const block = (kind, x, z, w, d, hp, reward, grp = -1) => L.blocks.push({ kind, x, z, w, d, hp: Math.round(hp), reward, group: grp });
   const foe = (kind, x, z) => L.enemies.push({ x, z, kind });
   const horde = (x0, x1, z0, rows, perRow, brutes = 0) => {
@@ -232,6 +253,101 @@ export function buildLevel(n) {
     },
   };
 
+  // A choice between a gate that changes the gang and a plain one
+  const special = (z) => {
+    const g = group++;
+    const s = rng() < 0.5 ? -1 : 1;
+    fxGate(3 * s, z, 5.7, pick(Object.keys(FX)), g);
+    gate(-3 * s, z, 5.7, '+', 14 + 6 * k, { group: g });
+    return z + 16;
+  };
+
+  // ---------- Routes: the stretches behind the signs of a junction ----------
+  const R = {
+    // Many small gates to weave through, little brothers running around, a jar at the end
+    playground(z, f, m) {
+      gate(0, z + 2, 3.8, '+', Math.round((6 + 3 * k) * m), { yellow: true, move: { amp: 3.9, period: Math.max(2.2, 3.2 - 0.08 * k), phase: rng() * 6.28 } });
+      let s = rng() < 0.5 ? -1 : 1;
+      for (let i = 0; i < 6; i++) { gate(s * 3.2, z + 10 + i * 5, 4.4, '+', 1 + Math.ceil(k / 2)); s = -s; }
+      const c = Math.round(Math.min(36, 6 + 3 * k) * f);
+      for (let i = 0; i < c; i++) foe('runner', (rng() - 0.5) * 10.5, z + 14 + rng() * 26);
+      block('jar', pick([-3, 3]), z + 44, 2.2, 2.2, (12 + 14 * k) * m, { type: 'add', v: Math.round((8 + 3 * k) * m) });
+      return z + 52;
+    },
+    // No grown-ups: bricks, spinners and (later) walls, with a trail of fat coins through them
+    alley(z) {
+      let s = rng() < 0.5 ? -1 : 1;
+      for (let i = 0; i < 3; i++) { L.hazards.push({ kind: 'spikes', x: s * 2.6, z: z + 4 + i * 8, w: 6.8, d: 1.1 }); s = -s; }
+      for (let i = 0; i < 2; i++) { L.hazards.push({ kind: 'saw', x0: s * 2.9, z: z + 30 + i * 7, amp: 2.3, period: Math.max(1.3, 2.2 - 0.07 * k), phase: rng() * 6.28, r: 0.95 }); s = -s; }
+      if (n >= 6) L.hazards.push({ kind: 'walls', c: pick([-3, 0, 3]), z: z + 46, d: 1.5, min: Math.max(2.75, 3.2 - 0.05 * k), period: Math.max(2, 3.2 - 0.08 * k), phase: rng() * 6.28 });
+      for (let zz = z + 2; zz < z + 50; zz += 2) coin(4.2 * Math.sin(zz * 0.45), zz, 2);
+      gate(pick([-3.6, 3.6]), z + 24, 4, '+', 6 + 3 * k, { yellow: true });
+      return z + 52;
+    },
+    // Two rows of jars behind their guards: many friends, but every jar is a stop
+    detention(z, f, m) {
+      if (n >= 3) for (let i = 0; i < 5; i++) foe('shield', -4 + i * 2, z + 3);
+      else horde(-5, 5, z + 3, 2, 10, 0);
+      for (const x of [-4, 0, 4]) block('jar', x, z + 8, 2.2, 2.2, (16 + 18 * k) * m, { type: 'add', v: Math.round((10 + 4 * k) * m) });
+      horde(-5, 5, z + 14, Math.max(1, Math.round((2 + k) * f)), 12, 0);
+      for (const x of [-3, 3]) block('jar', x, z + 26, 2.2, 2.2, (24 + 26 * k) * m, { type: 'add', v: Math.round((16 + 7 * k) * m) });
+      return z + 36;
+    },
+    // Nobody around: two rows of gates that cost coins
+    shop(z) {
+      const price = (b) => Math.round(b * (1 + 0.5 * k));
+      const sell = (x, zz, buy, v, name, cost) => gate(x, zz, 3.8, 'buy', 0, { extra: { buy, bv: v, cost, label: `${name}\n${cost} ¢`, style: 'teal' } });
+      const a = Math.round(18 + 8 * k);
+      sell(-4, z + 4, 'add', a, `+${a} friends`, price(10));
+      sell(0, z + 4, 'star', 0, '★ Toy +25%', price(16));
+      sell(4, z + 4, 'rage', 0, '🥤 Sugar rush', price(6));
+      sell(-4, z + 18, 'shield', 0, '🎧 Headphones', price(6));
+      sell(0, z + 18, 'add', a * 2, `+${a * 2} friends`, price(18));
+      sell(4, z + 18, 'swap', 0, '🎲 Lucky dip', price(8));
+      return z + 28;
+    },
+    // The hardest crowd of the level, and behind it a choice of toys one tier above, a power-up and coins
+    staff(z, f) {
+      if (n >= 3) for (let i = 0; i < 6; i++) foe('shield', -5 + i * 2, z + 4);
+      for (let i = 0; i < Math.min(7, 2 + Math.floor(k / 2)); i++) foe('brute', (rng() - 0.5) * 9, z + 7 + rng() * 3);
+      if (n >= 4) { const c = 2 + Math.min(2, Math.floor(k / 3)); for (let i = 0; i < c; i++) foe('shooter', -4 + (8 * (i + 0.5)) / c, z + 17 + rng() * 2); }
+      horde(-5, 5, z + 10, Math.max(2, Math.round((3 + 2 * k) * f)), 12, 0);
+      block('power', 0, z + 30, 1.8, 1.8, 16 + 18 * k, { type: pick(['rage', 'shield', 'bomb']) });
+      weapon(z + 34, n >= 4 ? 2 : 1);
+      for (let i = 0; i < 10; i++) coin(-4.5 + i, z + 40 + (i % 2), 3);
+      return z + 46;
+    },
+    // Scooters for everybody, then three crowds to ride through
+    bikes(z, f) {
+      for (const x of [-3, 3]) fxGate(x, z + 2, 5.7, 'scooter');
+      for (let b = 0; b < 3; b++) horde(-5, 5, z + 12 + b * 14, Math.max(2, Math.round((3 + 1.5 * k) * f)), 12, b === 2 ? Math.min(3, Math.floor(k / 2)) : 0);
+      for (let zz = z + 10; zz < z + 52; zz += 2) coin(3 * Math.sin(zz * 0.4), zz);
+      return z + 56;
+    },
+  };
+
+  // Three signs side by side, and behind them the three stretches laid on the same piece of road
+  const junction = (z, f, m) => {
+    const j = L.junctions.length;
+    const pool = Object.keys(ROUTES).filter((id) => ROUTES[id].from <= n);
+    const ids = [];
+    while (ids.length < 3) ids.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+    const g = group++;
+    ids.forEach((id, o) => gate(-4 + o * 4, z, 3.8, 'route', 0, { group: g, extra: { pick: j * 10 + o, label: ROUTES[id].label, style: 'green' } }));
+    const lists = [L.gates, L.blocks, L.enemies, L.hazards, L.coins];
+    const ends = ids.map((id, o) => {
+      const from = lists.map((a) => a.length);
+      const end = R[id](z + 18, f, m);
+      lists.forEach((a, i) => { for (let q = from[i]; q < a.length; q++) a[q].route = j * 10 + o; });
+      return end;
+    });
+    const end = Math.max(...ends);
+    // The shorter stretches end on a few coins rather than on an empty road
+    ends.forEach((e, o) => { for (let zz = e + 2; zz < end - 2; zz += 2.4) { coin(4 * Math.sin(zz * 0.35 + o), zz); L.coins.at(-1).route = j * 10 + o; } });
+    L.junctions.push({ z, z1: end, ids });
+    return end + 8;
+  };
+
   const unlocked = (table) => Object.keys(table).filter((id) => table[id] <= n);
   const fresh = (table) => Object.keys(table).filter((id) => table[id] === n);
 
@@ -253,17 +369,30 @@ export function buildLevel(n) {
   const dq = fresh(DANGERS).filter((d) => d !== 'wave');
   const gq = fresh(GROWTHS).filter((g) => g !== 'pair');
   let lastD = '', lastG = '';
+  // Junctions take the place of a danger and growth pair: always the second one, and one or two more in longer levels
+  const junctions = new Set([1]);
+  if (N >= 4) junctions.add(N - 1);
+  if (N >= 6) junctions.add(3);
   for (let i = 0; i < N; i++) {
     const m = 1 + i * 0.3;
-    let d = dq.shift();
-    if (!d) do d = pick(unlocked(DANGERS)); while (d === lastD);
-    lastD = d;
-    z = D[d](z, Math.min(1, 0.3 + 0.35 * i));
-    if (i === Math.floor(N / 2)) z = weapon(z, 1);
-    let g = gq.shift();
-    if (!g) do g = pick(unlocked(GROWTHS)); while (g === lastG || (g === 'mult' && mults >= maxMults));
-    lastG = g;
-    z = G[g](z, m);
+    const f = Math.min(1, 0.3 + 0.35 * i);
+    if (junctions.has(i)) {
+      // After a lane section, leave the tail of a long gang the time to come out before the signs
+      if (L.sections.length && z - L.sections.at(-1).z1 < 30) { for (let zz = z; zz < z + 14; zz += 2) coin(3 * Math.sin(zz * 0.5), zz); z += 16; }
+      z = junction(z, f, m);
+      if (i === 1 && n >= 2) z = special(z);
+      if (i === Math.floor(N / 2)) z = weapon(z, 1);
+    } else {
+      let d = dq.shift();
+      if (!d) do d = pick(unlocked(DANGERS)); while (d === lastD);
+      lastD = d;
+      z = D[d](z, f);
+      if (i === Math.floor(N / 2)) z = weapon(z, 1);
+      let g = gq.shift();
+      if (!g) do g = pick(unlocked(GROWTHS)); while (g === lastG || (g === 'mult' && mults >= maxMults));
+      lastG = g;
+      z = G[g](z, m);
+    }
     if (i === 0) z = lanes(z, 62, 20 + 5 * k, 90 + 110 * k, pick([8, 10, 12]) + 4 * k) + 14;
     if (n >= 3 && i === N - 2) z = lanes(z, 54, 22 + 6 * k, 200 + 150 * k, 15 + 6 * k) + 14;
     // Late levels offer the top guns twice: switch, or take the same one again for a star

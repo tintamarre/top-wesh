@@ -141,12 +141,15 @@ export class Audio {
           // Rising arpeggio when walking through a row of +1 gates
           if (now - this.gateT > 0.6) this.gateN = 0;
           this.gateT = now;
-          const good = e.delta >= 0;
+          const good = e.delta >= 0 && !e.bad;
           const f = good ? 520 * 2 ** (Math.min(this.gateN++, 24) / 12) : 220;
           this.tone(f, 0.12, 'triangle', 0.18, good ? 0 : -80);
           if (e.gate.yellow || Math.abs(e.delta) > 5) this.tone(f * 1.5, 0.15, 'triangle', 0.12, 0, 0.06);
           break;
         }
+        case 'bump':
+          if (kills++ < 2) this.tone(240, 0.06, 'square', 0.05, -100);
+          break;
         case 'gateUp':
           this.tone(880, 0.05, 'triangle', 0.08);
           break;

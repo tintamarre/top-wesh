@@ -84,6 +84,10 @@ export class Sim {
     this.weapon = P.sidearm ? 1 + (level.n % 2) : 0;
     this.stars = 0; // picking the gun you already hold makes it stronger (late levels offer the top guns twice)
     this.rageT = 0; // double fire rate
+    this.rushT = 0; // on scooters: faster, never stops for a crowd and runs it over
+    this.eliteMul = 1; // damage bought by sending half of the gang home
+    this.wallet = opts.wallet ?? 0; // coins the player owns, for the corner shop
+    this.spent = 0;
     this.shieldT = 4 * P.guard; // no losses
     // A gate you can shoot climbs one step per hit, up to the opposite of where it started
     this.gates = level.gates.map((g) => ({ ...g, x0: g.x, used: false, acc: 0, step: 2 + k * 0.6, max: Math.max(5, Math.abs(g.v)) }));
@@ -91,6 +95,12 @@ export class Sim {
     this.enemies = level.enemies.map((e) => this.makeEnemy(e));
     this.hazards = level.hazards.map((h) => ({ ...h, x: h.x ?? h.x0 ?? h.c, open: this.half + 0.5, half: this.half, cool: 0 }));
     this.pickups = (level.coins ?? []).map((c) => ({ ...c, alive: true }));
+    // What lies behind the signs of a junction waits here until its sign is taken (openRoute)
+    this.dormant = {};
+    for (const id of ['gates', 'blocks', 'enemies', 'hazards', 'pickups']) {
+      this.dormant[id] = this[id].filter((o) => o.route !== undefined);
+      this[id] = this[id].filter((o) => o.route === undefined);
+    }
     this.shots = []; // enemy projectiles
     const B = level.boss;
     this.boss = {
@@ -223,6 +233,7 @@ export class Sim {
     if (this.shieldT > 0) this.shieldT -= dt;
     if (this.tankT > 0) this.tankT -= dt;
     if (this.shoutT > 0) this.shoutT -= dt;
+    if (this.rushT > 0) this.rushT -= dt;
     this.updateSquad(dt);
     this.updateGates();
     this.shoot(dt);
@@ -292,9 +303,11 @@ export class Sim {
       const side = e.fires ? q.Rx + 0.8 : q.Rx + 3;
       if (ahead > -1 && ahead < 6 && Math.abs(e.x - q.x) < side && this.regionOf(e.x, e.z) === reg) { engaged = true; break; }
     }
+    const rush = this.rushT > 0;
+    if (rush) engaged = false;
     if (B.alive && B.z - front < 13) engaged = true;
     q.engaged = engaged;
-    const wantSpeed = engaged ? 0 : RUN_SPEED;
+    const wantSpeed = engaged ? 0 : RUN_SPEED * (rush ? 1.7 : 1);
     q.speed += (wantSpeed - q.speed) * Math.min(1, dt * 5);
     q.prevZ = q.z;
     let nz = q.z + q.speed * dt;
@@ -371,15 +384,78 @@ export class Sim {
       if (g.used) continue;
       if (g.move) g.x = g.x0 + g.move.amp * Math.sin((this.time * TAU) / g.move.period + g.move.phase);
       // The first row takes the gate, not the middle of the gang
-      if (q.prevFront < g.z && q.front >= g.z && Math.abs(q.x - g.x) < g.w / 2) {
-        const before = q.count;
-        if (g.op === 'x') q.count = Math.floor(q.count * g.v);
-        else q.count = Math.max(0, q.count + Math.round(g.v > 0 ? g.v * (1 + 0.1 * this.perks.gates) : g.v));
-        g.used = true;
-        if (g.group >= 0) for (const o of this.gates) if (o.group === g.group && o !== g) { o.used = true; o.skipped = true; }
-        this.emit({ type: 'gate', gate: g, delta: q.count - before, x: g.x, z: g.z });
-      }
+      if (q.prevFront >= g.z || q.front < g.z) continue;
+      if (g.op === 'route') {
+        // A junction always sends you somewhere: the closest sign wins, even from between two of them
+        let best = g;
+        for (const o of this.gates) if (o.group === g.group && Math.abs(q.x - o.x) < Math.abs(q.x - best.x)) best = o;
+        this.takeGate(best);
+      } else if (Math.abs(q.x - g.x) < g.w / 2) this.takeGate(g);
     }
+  }
+
+  takeGate(g) {
+    const q = this.squad;
+    const before = q.count;
+    let text = null, bad = false;
+    if (g.op === 'x') q.count = Math.floor(q.count * g.v);
+    else if (g.op === 'route') this.openRoute(g.pick);
+    else if (g.op === 'fx') text = this.reward(g.fx);
+    else if (g.op === 'buy') {
+      if (this.wallet - this.spent < g.cost) { text = 'NOT ENOUGH COINS'; bad = true; }
+      else { this.spent += g.cost; text = this.reward(g.buy, g.bv); }
+    } else q.count = Math.max(0, q.count + Math.round(g.v > 0 ? g.v * (1 + 0.1 * this.perks.gates) : g.v));
+    g.used = true;
+    if (g.group >= 0) for (const o of this.gates) if (o.group === g.group && o !== g) { o.used = true; o.skipped = true; }
+    this.emit({ type: 'gate', gate: g, delta: q.count - before, text, bad, x: g.x, z: g.z });
+  }
+
+  // The stretch behind a sign comes to life, the two others are forgotten
+  openRoute(key) {
+    const j = Math.floor(key / 10);
+    for (const id in this.dormant) {
+      for (const o of this.dormant[id]) if (o.route === key) this[id].push(o);
+      this.dormant[id] = this.dormant[id].filter((o) => Math.floor(o.route / 10) !== j);
+    }
+    this.emit({ type: 'route', key });
+  }
+
+  // What the special gates, the shop and the power-up boxes give. Returns the words that float up.
+  reward(type, v = 0) {
+    const q = this.squad;
+    switch (type) {
+      case 'elite':
+        // Half of the gang goes home (they are not counted as lost), the others hit three times as hard
+        q.count = Math.ceil(q.count / 2);
+        this.lostTotal = Math.floor(this.lostTotal / 2);
+        this.eliteMul *= 3;
+        return 'DAMAGE ×3!';
+      case 'scooter':
+        this.rushT = 4.5;
+        return 'SCOOTERS!';
+      case 'swap': {
+        const pool = (this.L.n < 4 ? [1, 2, 3, 4, 5] : [3, 4, 5, 6, 7]).filter((w) => w !== this.weapon);
+        this.weapon = pool[Math.floor(this.rng() * pool.length)];
+        this.stars = 0;
+        return WEAPONS[this.weapon].name.toUpperCase() + '!';
+      }
+      case 'star':
+        this.stars++;
+        return WEAPONS[this.weapon].name.toUpperCase() + ' ' + '★'.repeat(Math.min(3, this.stars)) + '!';
+      case 'add':
+        q.count += v;
+        return '+' + v;
+      case 'rage':
+        this.rageT = 8 * (1 + 0.4 * this.perks.power);
+        return 'SUGAR RUSH! ×2';
+      case 'shield':
+        this.shieldT = 7 * (1 + 0.4 * this.perks.power);
+        return 'HEADPHONES ON!';
+      case 'bomb':
+        this.airstrike();
+        return 'BASS DROP!';
+    }
+    return '';
   }
 
   shoot(dt) {
@@ -388,7 +464,7 @@ export class Sim {
     const W = WEAPONS[this.weapon];
     const emitters = Math.min(q.count, MAX_EMITTERS);
     const rate = W.rate * this.rateMul * (this.rageT > 0 ? 2 : 1);
-    const dmg = (W.dmg * this.dmgMul * (1 + 0.25 * this.stars) * q.count) / emitters;
+    const dmg = (W.dmg * this.dmgMul * this.eliteMul * (1 + 0.25 * this.stars) * q.count) / emitters;
     this.shotAcc += emitters * rate * dt;
     let fired = 0;
     // Soldiers aim at the closest enemies ahead (a little auto-aim, like the arcade originals)
@@ -555,22 +631,10 @@ export class Sim {
       if (r.w === this.weapon) this.stars++;
       else { this.weapon = r.w; this.stars = 0; }
       text = WEAPONS[this.weapon].name.toUpperCase() + (this.stars ? ' ' + '★'.repeat(Math.min(3, this.stars)) : '') + '!';
-    } else if (r.type === 'add') {
-      this.squad.count += r.v;
-      text = '+' + r.v;
     } else if (r.type === 'coins') {
       this.coins += r.v;
       text = '+' + r.v + ' ¢';
-    } else if (r.type === 'rage') {
-      this.rageT = 8 * (1 + 0.4 * this.perks.power);
-      text = 'SUGAR RUSH! ×2';
-    } else if (r.type === 'shield') {
-      this.shieldT = 7 * (1 + 0.4 * this.perks.power);
-      text = 'HEADPHONES ON!';
-    } else if (r.type === 'bomb') {
-      text = 'BASS DROP!';
-      this.airstrike();
-    }
+    } else text = this.reward(r.type, r.v);
     this.emit({ type: 'break', block: o, text });
     if (o.group >= 0) for (const p of this.blocks) if (p.alive && p.group === o.group) { p.alive = false; this.emit({ type: 'blockGone', block: p }); }
   }
@@ -664,6 +728,12 @@ export class Sim {
       // Contact with the squad: one for one, more for the big ones
       const nx = (e.x - sx) / (ex2 + e.r * 0.5), nz = (e.z - sz) / (ez2 + e.r * 0.5);
       if (nx * nx + nz * nz < 1 && (e.straight || this.regionOf(e.x, e.z) === reg)) {
+        if (this.rushT > 0 && !e.straight) {
+          // On scooters the gang runs grown-ups over (a surprise test goes off among its own)
+          this.emit({ type: 'bump', x: e.x, z: e.z });
+          this.killEnemy(e, true);
+          continue;
+        }
         if (e.blast) {
           const inside = this.countInside(e.x, e.z, e.blast);
           this.emit({ type: 'boom', x: e.x, z: e.z, r: e.blast });

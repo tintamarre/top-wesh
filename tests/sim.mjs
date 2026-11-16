@@ -1,7 +1,7 @@
 // Headless balance test: bots play the levels with the pure simulation.
 // - a smart bot (good gates, best lane, steps around saws, spikes, iron balls and orbs) must win every level, buying upgrades with what it earns
 // - a lazy bot (stays in the middle, takes no gate on purpose) must lose from some level on
-import { buildLevel, buildBonus } from '../src/level.js';
+import { buildLevel, buildBonus, ROUTES } from '../src/level.js';
 import { Sim, wallHalf } from '../src/sim.js';
 import { PERKS, starsFor } from '../src/perks.js';
 import { upgradeCost, upgradeStats, UPGRADES } from '../src/upgrades.js';
@@ -9,7 +9,20 @@ import { upgradeCost, upgradeStats, UPGRADES } from '../src/upgrades.js';
 const DT = 1 / 60;
 const verbose = process.argv.includes('-v');
 
-function gateResult(g, n) { return g.op === 'x' ? n * g.v : n + g.v; }
+// Routes the bot likes best at a junction, unless a test asks for one
+const ROUTE_ORDER = ['playground', 'detention', 'alley', 'bikes', 'staff', 'shop'];
+let wantRoute = null;
+const routes = new Set(); // every route taken by a bot
+
+function gateResult(g, n, sim) {
+  if (g.op === 'x') return n * g.v;
+  if (g.op === 'route') {
+    const id = sim.L.junctions[Math.floor(g.pick / 10)].ids[g.pick % 10];
+    return id === wantRoute ? 99 : -ROUTE_ORDER.indexOf(id);
+  }
+  if (g.op === 'fx') return g.fx === 'elite' ? n * 1.2 : g.fx === 'scooter' ? n + 5 : n - 1;
+  return n + g.v;
+}
 
 // Where the bot would like to be, before looking at what could hurt it there
 function goalX(sim, lanePref) {
@@ -19,7 +32,7 @@ function goalX(sim, lanePref) {
   if (ahead.length) {
     const z = Math.min(...ahead.map((g) => g.z));
     const row = ahead.filter((g) => g.z === z);
-    row.sort((a, b) => gateResult(b, q.count) - gateResult(a, q.count));
+    row.sort((a, b) => gateResult(b, q.count, sim) - gateResult(a, q.count, sim));
     return row[0].x;
   }
   // Lane section ahead or current
@@ -107,7 +120,10 @@ function play(n, stats, bot, level = buildLevel(n), shouts = true) {
     if (shouts && wantShout(sim)) sim.shout();
     sim.update(DT);
     t += DT;
-    for (const e of sim.events) if (e.type === 'lost') why[e.why] = (why[e.why] ?? 0) + e.n;
+    for (const e of sim.events) {
+      if (e.type === 'lost') why[e.why] = (why[e.why] ?? 0) + e.n;
+      else if (e.type === 'route') routes.add(sim.L.junctions[Math.floor(e.key / 10)].ids[e.key % 10]);
+    }
     sim.events.length = 0;
   }
   return { mum: sim.mum.took, state: t >= 400 ? 'timeout' : sim.state, t: t.toFixed(0), coins: sim.coins, peak: sim.peak, left: sim.squad.count, lost: sim.lostTotal, boss: Math.round(sim.boss.hp), weapon: sim.weaponInfo.name, stars: starsFor(sim.squad.count, sim.lostTotal), z: Math.round(sim.squad.z), why };
@@ -166,6 +182,26 @@ if (play(1, upgradeStats({ start: 0, power: 0, rate: 0 }), (s) => smartBot(s, 'g
     console.log(`level ${n} with every perk and hero: ${full.state}, ${full.left} left (${plain.state}, ${plain.left} without)`);
     if (full.state !== 'won') { fails++; console.error('  ✗ lost with every perk and hero'); }
   }
+}
+// Every kind of route must play through, with coins in the pocket for the shop
+{
+  const stats = { ...upgradeStats({ start: 8, power: 6, rate: 6 }), wallet: 500 };
+  const seen = new Set();
+  for (const id of Object.keys(ROUTES)) {
+    for (const n of [3, 5, 8, 11]) {
+      if (!buildLevel(n).junctions.some((j) => j.ids.includes(id))) continue;
+      routes.clear();
+      wantRoute = id;
+      const r = play(n, stats, (s) => smartBot(s, 'auto'));
+      wantRoute = null;
+      if (!routes.has(id)) continue;
+      seen.add(id);
+      console.log(`route ${id.padEnd(10)} level ${n}: ${r.state}, ${r.left} left, ${r.lost} lost (took ${[...routes].join(", ")})`);
+      if (r.state === 'timeout') { fails++; console.error(`  ✗ the ${id} route never ends`); }
+      break;
+    }
+  }
+  if (seen.size < Object.keys(ROUTES).length) { fails++; console.error(`  ✗ routes never offered: ${Object.keys(ROUTES).filter((id) => !seen.has(id))}`); }
 }
 // Bonus coin rush: following the trail reaches the finish line with most of the coins
 for (const n of [3, 9]) {

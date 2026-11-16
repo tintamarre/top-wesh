@@ -32,7 +32,7 @@ let acc = 0;
 let ended = false;
 const DT = 1 / 60;
 const STAR = (n, of = 3) => '★'.repeat(n) + '☆'.repeat(of - n);
-const simOpts = () => ({ ...upgradeStats(save.up), perks: save.perks, heroes: save.heroes });
+const simOpts = () => ({ ...upgradeStats(save.up), perks: save.perks, heroes: save.heroes, wallet: save.coins });
 
 function newRun(n, isBonus = false) {
   bonus = isBonus;
@@ -229,6 +229,7 @@ function endLevel() {
       : `Level ${n}<br>Biggest gang ${sim.peak} · ${sim.kills} grown-ups soaked<br>Everybody got sent home. Try again!`;
   }
   const good = won || bonus;
+  earned -= sim.spent; // what the corner shop took
   save.coins += earned;
   persist();
   mode = 'end';
@@ -236,6 +237,7 @@ function endLevel() {
   $('endStars').textContent = stars ? STAR(stars) : '';
   $('endStars').classList.toggle('hidden', !stars);
   $('endCoins').textContent = earned;
+  $('endCoins').previousSibling.textContent = earned < 0 ? '' : '+';
   $('btnNext').classList.toggle('hidden', !good);
   $('btnNext').textContent = bonusNext ? 'Coin rush!' : 'Next level';
   $('btnRetry').classList.toggle('hidden', good);
@@ -311,12 +313,14 @@ function loop(now) {
 
 let lastChip = '';
 function hud() {
-  $('hudCoins').textContent = save.coins + Math.floor(sim.coins);
+  $('hudCoins').textContent = save.coins + Math.floor(sim.coins) - sim.spent;
   $('hudProg').style.width = `${Math.min(100, (sim.squad.z / sim.boss.z) * 100)}%`;
   const W = sim.weaponInfo;
   let chip = `${W.icon} ${W.name}${'★'.repeat(Math.min(3, sim.stars))}`;
   if (sim.rageT > 0) chip += `  ·  ⚡ ${Math.ceil(sim.rageT)}s`;
   if (sim.shieldT > 0) chip += `  ·  🛡️ ${Math.ceil(sim.shieldT)}s`;
+  if (sim.rushT > 0) chip += `  ·  🛴 ${Math.ceil(sim.rushT)}s`;
+  if (sim.eliteMul > 1) chip += `  ·  💥×${sim.eliteMul}`;
   if (chip !== lastChip) $('hudWeapon').textContent = lastChip = chip;
   const ready = sim.shoutT <= 0;
   $('btnShout').classList.toggle('ready', ready);

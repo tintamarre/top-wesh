@@ -317,7 +317,20 @@ export class Renderer {
     for (const g of sim.gates) this.buildGate(G, g);
     this.blockMeshes = new Map();
     for (const b of sim.blocks) this.buildBlock(G, b);
+    this.saws = [];
+    this.walls = [];
     this.buildHazards(G, sim.hazards);
+    // What lies behind the signs of a junction is built now and stays hidden until its sign is taken
+    this.routeHazards = new Map();
+    for (const g of sim.dormant.gates) { this.buildGate(G, g); this.gateMeshes.get(g.id).visible = false; }
+    for (const b of sim.dormant.blocks) { this.buildBlock(G, b); this.blockMeshes.get(b).visible = false; }
+    for (const key of new Set(sim.dormant.hazards.map((h) => h.route))) {
+      const sub = new THREE.Group();
+      sub.visible = false;
+      G.add(sub);
+      this.buildHazards(sub, sim.dormant.hazards.filter((h) => h.route === key));
+      this.routeHazards.set(key, sub);
+    }
     this.boss = null;
     if (sim.boss.type !== 'none') this.buildBoss(G, sim.boss);
     else {
@@ -552,8 +565,6 @@ export class Renderer {
   }
 
   buildHazards(G, hazards) {
-    this.saws = [];
-    this.walls = [];
     const m = this.mats;
     const spikes = [];
     for (const h of hazards) {
@@ -635,7 +646,7 @@ export class Renderer {
     const st = T.GATE_STYLES[style];
     const side = new THREE.MeshLambertMaterial({ color: st.edge });
     const front = new THREE.MeshLambertMaterial({ map: face });
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(g.w - 0.25, (g.w - 0.25) * 0.42, 0.14), [side, side, side, side, front, side]);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(g.w - 0.25, (g.w - 0.25) * (g.label ? 0.52 : 0.42), 0.14), [side, side, side, side, front, side]);
     panel.position.y = 0.95;
     panel.rotation.x = -0.55;
     panel.castShadow = true;
@@ -847,11 +858,26 @@ export class Renderer {
           const grp = this.gateMeshes.get(e.gate.id);
           if (grp) grp.userData.pop = 0.001;
           for (const o of sim.gates) if (o.skipped && !o._faded) { o._faded = true; const m = this.gateMeshes.get(o.id); if (m) m.userData.fade = 0.001; }
-          const txt = e.delta >= 0 ? '+' + e.delta : '−' + -e.delta;
-          this.float(txt, sim.squad.x, 1.6, e.z, e.delta >= 0 ? 'good' : 'bad');
-          this.burst(e.x, 0.9, e.z, e.delta >= 0 ? (e.gate.yellow ? 0xffd23a : 0x4f9bff) : 0xff4b3e, 8, 3, 1.2, 0.5);
+          const txt = e.text ?? (e.gate.op === 'route' ? '' : e.delta >= 0 ? '+' + e.delta : '−' + -e.delta);
+          if (txt) this.float(txt, sim.squad.x, 1.6, e.z, e.bad ? 'bad small' : e.text ? 'weapon' : e.delta >= 0 ? 'good' : 'bad');
+          this.burst(e.x, 0.9, e.z, e.delta >= 0 && !e.bad ? (e.gate.yellow ? 0xffd23a : 0x4f9bff) : 0xff4b3e, 8, 3, 1.2, 0.5);
+          // A gate may have changed the toy
+          this.bulletMat.color.set(WEAPONS[sim.weapon].color);
+          this.glowMat.color.set(WEAPONS[sim.weapon].color);
           break;
         }
+        case 'route': {
+          // The chosen stretch appears
+          for (const g of sim.gates) if (g.route === e.key) { const m = this.gateMeshes.get(g.id); if (m) m.visible = true; }
+          for (const b of sim.blocks) if (b.route === e.key) { const m = this.blockMeshes.get(b); if (m) m.visible = true; }
+          const sub = this.routeHazards.get(e.key);
+          if (sub) sub.visible = true;
+          break;
+        }
+        case 'bump':
+          if (sparks++ < 10) this.burst(e.x, 0.6, e.z, 0xffffff, 4, 5, 0.9, 0.35);
+          this.shake = Math.max(this.shake, 0.1);
+          break;
         case 'gateUp': {
           const grp = this.gateMeshes.get(e.gate.id);
           if (grp?.userData.dyn) {
@@ -1090,6 +1116,8 @@ export class Renderer {
       m.rotation.y = Math.PI;
     }
     this.lamp.position.set(q.x, 7, -(q.z + 5));
+    // Scooters: dust behind the gang
+    if (sim.rushT > 0 && dt > 0 && this.fx.length < MAXFX) this.fx.push({ x: q.x + (Math.random() - 0.5) * q.Rx * 2, y: 0.15, z: q.z - q.Rz, vx: 0, vy: 1.5, vz: -3, life: 0.35, max: 0.35, size: 1.1, c: 0xf2f2f2 });
 
     // The Mum: she waddles, and the camera makes room for her when she gets close
     const M = sim.mum;
