@@ -88,18 +88,29 @@ function smartBot(sim, lanePref) {
   return danger(sim, goal, balls) * 4 <= bestCost - Math.abs(best - goal) * 0.6 ? goal : best;
 }
 
-function play(n, stats, bot, level = buildLevel(n)) {
+// When the smart bot shouts: a boss about to strike, the Mum at its heels, chalk or homework about to land
+function wantShout(sim) {
+  const q = sim.squad, B = sim.boss;
+  if (sim.shoutT > 0) return false;
+  if (B.active && B.alive && (B.state === 'windup' || B.state === 'aim') && B.t < 0.3 && B.z - q.front < 7) return true;
+  if (sim.mumGap < 2) return true;
+  if (sim.shots.filter((s) => !s.back && s.z > q.z && s.z - q.front < 3 && Math.abs(s.x - q.x) < q.Rx + 1).length >= 2) return true;
+  return sim.enemies.some((e) => e.straight && e.alive && e.active && e.z > q.z && e.z - q.front < 3 && Math.abs(e.x - q.x) < q.Rx + 1);
+}
+
+function play(n, stats, bot, level = buildLevel(n), shouts = true) {
   const sim = new Sim(level, stats);
   let t = 0;
   const why = {};
   while (sim.state !== 'won' && sim.state !== 'lost' && t < 400) {
     sim.squad.targetX = bot(sim);
+    if (shouts && wantShout(sim)) sim.shout();
     sim.update(DT);
     t += DT;
     for (const e of sim.events) if (e.type === 'lost') why[e.why] = (why[e.why] ?? 0) + e.n;
     sim.events.length = 0;
   }
-  return { state: t >= 400 ? 'timeout' : sim.state, t: t.toFixed(0), coins: sim.coins, peak: sim.peak, left: sim.squad.count, lost: sim.lostTotal, boss: Math.round(sim.boss.hp), weapon: sim.weaponInfo.name, stars: starsFor(sim.squad.count, sim.lostTotal), z: Math.round(sim.squad.z), why };
+  return { mum: sim.mum.took, state: t >= 400 ? 'timeout' : sim.state, t: t.toFixed(0), coins: sim.coins, peak: sim.peak, left: sim.squad.count, lost: sim.lostTotal, boss: Math.round(sim.boss.hp), weapon: sim.weaponInfo.name, stars: starsFor(sim.squad.count, sim.lostTotal), z: Math.round(sim.squad.z), why };
 }
 
 let fails = 0;
@@ -139,7 +150,7 @@ for (let n = 1; n <= 15; n++) {
 
 // Lazy bot: never steers. Must lose somewhere, or the game has no challenge.
 let lazyLost = 0;
-for (let n = 1; n <= 8; n++) if (play(n, upgradeStats({ start: 0, power: 0, rate: 0 }), () => 0).state !== 'won') lazyLost++;
+for (let n = 1; n <= 8; n++) if (play(n, upgradeStats({ start: 0, power: 0, rate: 0 }), () => 0, undefined, false).state !== 'won') lazyLost++;
 console.log(`lazy bot lost ${lazyLost}/8 levels`);
 if (lazyLost < 3) { fails++; console.error('  ✗ too easy: a bot that never steers wins almost everything'); }
 // Level 1 must be winnable without upgrades by just following the gates

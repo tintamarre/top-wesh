@@ -7,11 +7,13 @@ A squad-runner in the browser that makes fun of war games: you lead a gang of te
 ## Features
 
 - The gang runs and shoots by itself: drag (or use the arrow keys / A D) to steer it.
-- Gates: blue and yellow ones bring friends, purple ones multiply, red ones send friends home. Some red gates can be shot until they turn blue, some yellow gates slide from side to side, some come in threes.
+- WESH! One button (or Space) makes the gang shout: grown-ups around are thrown back and stay dazed, chalk flies back at whoever threw it, homework balls roll off the road, and a boss loses the blow it was preparing. Six seconds to get your breath back.
+- From level 2 the Mum follows with her vacuum cleaner. She is slower than the gang, but she catches up whenever it stalls in front of a crowd, a jar or a barrier, and vacuums up the last rows. Break through fast, step aside or shout to send her back. She goes home when the boss shows up.
+- Gates count as soon as the first row reaches them: blue and yellow ones bring friends, purple ones multiply, red ones send friends home. Some red gates can be shot until they turn blue, some yellow gates slide from side to side, some come in threes.
 - Eight toys that behave differently: Spitballs, Water gun, Party popper (wide fan, short range), Foam darts (long range), Bubble gun (very fast), Deo spray (short cloud that goes through the ranks), Water balloons (splash), Laser pointer (goes through everything). Barrels and ice crates often come in pairs: the one you break is the one you get. From level 6 the top toys are offered twice: the same one again earns a star (+25% damage).
 - Power-up boxes: energy drink (double fire rate), headphones (nothing reaches you for a few seconds), bass drop (clears the road and dents the boss). Jars get friends out of detention.
 - A big gang closes ranks into a column no wider than 42% of the road, so whatever its size there is a free side to go to.
-- Obstacles to step around: toy bricks on the floor, giant fidget spinners sweeping one half of the road, walls closing in around a moving gap, giant balls of crumpled homework rolling at you (nothing stops homework).
+- Obstacles to step around: toy bricks on the floor, giant fidget spinners sweeping one half of the road, walls closing in around a moving gap, giant balls of crumpled homework rolling at you (nothing stops homework, except a good shout).
 - Seven kinds of grown-ups and other nuisances: supervisors, little brothers (fast, weaving), gym teachers (big), librarians behind a ring binder that stops everything, surprise tests that blow up in a cloud of paper, maths teachers throwing chalk you can sidestep, and the homework.
 - Three-lane sections: a long row of +1 gates, a lane full of supervisors, or a barrier to break with big yellow gates behind it. From level 5 the road also forks: an easy side with small gates, or a guarded side with a big jar, a big gate and coins.
 - Coins lie on the road, often next to a hazard. After every third level a coin rush has no grown-ups, only a trail of coins weaving between traps.
@@ -29,6 +31,7 @@ A squad-runner in the browser that makes fun of war games: you lead a gang of te
 | --- | --- |
 | Drag left / right | Steer the gang |
 | ← → / A D (Q on AZERTY) | Steer the gang |
+| WESH! button / Space / ↑ / W (Z on AZERTY) | Shout |
 | Esc / P | Pause |
 | Enter / Space | Play, next level |
 
@@ -39,7 +42,7 @@ Requires Node 22+.
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm test         # headless balance test: bots play levels 1-15 with the pure simulation (about 20 s)
+npm test         # headless balance test: bots play levels 1-15 with the pure simulation, shouting when it helps (about 20 s)
 npm run build    # static site in dist/
 ```
 

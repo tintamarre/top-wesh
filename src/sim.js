@@ -20,6 +20,11 @@ export const WEAPONS = [
 export const RUN_SPEED = 7;
 const MAX_EMITTERS = 80;
 const ORB_SPEED = 9;
+export const SHOUT_CD = 6; // seconds between two shouts
+// The Mum and her vacuum cleaner follow the gang from this level on. She walks slower than the gang runs,
+// never falls further behind than MUM_GAP, and catches up whenever the gang stalls.
+export const MUM_FROM = 2;
+const MUM_GAP = 11;
 const GA = Math.PI * (3 - Math.sqrt(5)); // golden angle
 const TAU = Math.PI * 2;
 
@@ -72,7 +77,10 @@ export class Sim {
     this.healT = 5;
     this.snipeT = 1;
     this.tankT = 0; // time before the tank can take another blow
-    this.squad = { x: 0, z: 0, prevZ: 0, count: opts.start ?? 1, targetX: 0, speed: 0, scale: 1, lane: null, R: 0.5, Rx: 0.5, Rz: 0.5, engaged: false };
+    // front, prevFront: z of the first row, now and one step ago (gates are taken by the first row)
+    this.squad = { x: 0, z: 0, prevZ: 0, front: 0.5, prevFront: 0.5, count: opts.start ?? 1, targetX: 0, speed: 0, scale: 1, lane: null, R: 0.5, Rx: 0.5, Rz: 0.5, engaged: false };
+    this.shoutT = 0; // time before the gang can shout again
+    this.mum = { on: !level.bonus && level.n >= MUM_FROM && opts.mum !== false, x: 0, z: -MUM_GAP - 2, speed: Math.min(5, 3.4 + 0.12 * k), cool: 0, stun: 0, near: false, took: 0 };
     this.weapon = P.sidearm ? 1 + (level.n % 2) : 0;
     this.stars = 0; // picking the gun you already hold makes it stronger (late levels offer the top guns twice)
     this.rageT = 0; // double fire rate
@@ -108,7 +116,7 @@ export class Sim {
   makeEnemy(e, active = false) {
     const T = ENEMY[e.kind];
     const hp = T.hp[0] + T.hp[1] * this.k;
-    const o = { ...e, ...T, hp, maxHp: hp, alive: true, active, phase: this.rng() * 6.28, cool: 0.8 + this.rng() * 1.6, t: 0 };
+    const o = { ...e, ...T, hp, maxHp: hp, alive: true, active, phase: this.rng() * 6.28, cool: 0.8 + this.rng() * 1.6, t: 0, push: 0, stun: 0 };
     if (e.kind === 'boulder') o.power = 6 + 2 * this.k;
     return o;
   }
@@ -214,6 +222,7 @@ export class Sim {
     if (this.rageT > 0) this.rageT -= dt;
     if (this.shieldT > 0) this.shieldT -= dt;
     if (this.tankT > 0) this.tankT -= dt;
+    if (this.shoutT > 0) this.shoutT -= dt;
     this.updateSquad(dt);
     this.updateGates();
     this.shoot(dt);
@@ -222,6 +231,7 @@ export class Sim {
     this.updateShots(dt);
     this.updateHazards(dt);
     this.updateBoss(dt);
+    this.updateMum(dt);
     this.updatePickups();
     this.updateHeroes(dt);
     if (this.L.bonus && this.squad.z >= this.L.finish) this.finish('won');
@@ -241,6 +251,7 @@ export class Sim {
     const q = this.squad;
     const R = radius(q.count);
     q.R = R;
+    q.prevFront = q.front;
     // Lanes: squeeze the formation to the lane width
     let bounds = [-this.half, this.half];
     if (q.lane && q.z - q.Rz > q.lane.s.z1) q.lane = null;
@@ -289,6 +300,69 @@ export class Sim {
     let nz = q.z + q.speed * dt;
     if (nz + q.Rz > limit) { nz = Math.max(q.z, limit - q.Rz); q.speed = 0; q.blocked = true; } else q.blocked = false;
     q.z = nz;
+    q.front = q.z + q.Rz;
+  }
+
+  // Distance between the Mum and the last row (Infinity when she is not around)
+  get mumGap() { return this.mum.on ? this.squad.z - this.squad.Rz - this.mum.z : Infinity; }
+
+  // WESH! The gang shouts: grown-ups around are pushed back and stay dazed, chalk flies back at whoever threw it,
+  // homework balls are knocked off the road, a boss loses the blow it was preparing and the Mum steps back.
+  shout() {
+    const q = this.squad;
+    if (this.state !== 'play' || this.shoutT > 0 || q.count <= 0) return false;
+    this.shoutT = SHOUT_CD;
+    const rx = q.Rx + 4.5, zf = q.Rz + 7, zb = q.Rz + 3;
+    let n = 0;
+    for (const e of this.enemies) {
+      if (!e.alive || !e.active) continue;
+      const dz = e.z - q.z;
+      if (Math.abs(e.x - q.x) > rx || dz > zf || dz < -zb) continue;
+      n++;
+      if (e.straight) { this.killEnemy(e, false); continue; }
+      e.push = 0.35;
+      e.stun = 1.4;
+    }
+    for (const s of this.shots) {
+      const dz = s.z - q.z;
+      if (s.back || Math.abs(s.x - q.x) > rx + 1 || dz > zf + 2 || dz < -zb) continue;
+      s.back = true;
+      s.vx *= -1.8;
+      s.vz *= -1.8;
+      s.dmg = (8 + 6 * this.k) * this.dmgMul;
+      n++;
+    }
+    const B = this.boss;
+    if (B.alive && B.active && B.z - q.front < 7 && (B.state === 'windup' || B.state === 'aim')) {
+      B.state = 'idle';
+      B.cool = 1.6;
+      this.emit({ type: 'stagger', x: B.x, z: B.z });
+    }
+    const M = this.mum;
+    if (M.on) { M.z -= 8; M.stun = 1.2; }
+    this.emit({ type: 'shout', x: q.x, z: q.z, r: Math.max(rx, zf), n });
+    return true;
+  }
+
+  // The Mum: harmless while the gang runs, she vacuums up the last rows when it stalls. She goes home when the boss shows up.
+  updateMum(dt) {
+    const M = this.mum, q = this.squad;
+    if (!M.on) return;
+    if (this.boss.active) { M.on = false; this.emit({ type: 'mumGone', x: M.x, z: M.z }); return; }
+    const back = q.z - q.Rz;
+    if (M.stun > 0) M.stun -= dt;
+    else M.z += M.speed * dt;
+    M.z = Math.min(back - 1.2, Math.max(M.z, back - MUM_GAP));
+    M.x += Math.max(-3 * dt, Math.min(3 * dt, q.x - M.x));
+    const gap = back - M.z;
+    if (gap < 6 && !M.near) { M.near = true; this.emit({ type: 'mumNear', x: q.x, z: back }); }
+    else if (gap > 10) M.near = false;
+    if (gap > 1.25 || M.stun > 0) { M.cool = 0.4; return; }
+    M.cool -= dt;
+    if (M.cool > 0) return;
+    M.cool = 0.5;
+    this.emit({ type: 'vacuum', x: M.x, z: back });
+    M.took += this.lose(Math.max(1, Math.ceil(q.count * 0.03)), q.x, back, 'mum');
   }
 
   updateGates() {
@@ -296,7 +370,8 @@ export class Sim {
     for (const g of this.gates) {
       if (g.used) continue;
       if (g.move) g.x = g.x0 + g.move.amp * Math.sin((this.time * TAU) / g.move.period + g.move.phase);
-      if (q.prevZ < g.z && q.z >= g.z && Math.abs(q.x - g.x) < g.w / 2) {
+      // The first row takes the gate, not the middle of the gang
+      if (q.prevFront < g.z && q.front >= g.z && Math.abs(q.x - g.x) < g.w / 2) {
         const before = q.count;
         if (g.op === 'x') q.count = Math.floor(q.count * g.v);
         else q.count = Math.max(0, q.count + Math.round(g.v > 0 ? g.v * (1 + 0.1 * this.perks.gates) : g.v));
@@ -555,7 +630,12 @@ export class Sim {
       e.t += dt;
       const dz = sz - e.z;
       if (dz > 18) { e.alive = false; continue; } // left far behind: they give up
-      if (e.straight) {
+      if (e.push > 0) {
+        // Shouted at: thrown back, away from the gang
+        e.push -= dt;
+        e.z += (dz < 0 ? 16 : -16) * dt;
+      } else if (e.stun > 0) e.stun -= dt;
+      else if (e.straight) {
         e.z -= e.speed * dt;
         // Iron balls break on lane walls and on anything solid standing on the road
         if (this.sectionAt(e.z) || this.blocks.some((b) => b.alive && Math.abs(b.x - e.x) < b.w / 2 + e.r && Math.abs(b.z - e.z) < b.d / 2 + e.r)) { this.killEnemy(e, false); continue; }
@@ -608,7 +688,25 @@ export class Sim {
       if (!s.alive) continue;
       s.x += s.vx * dt;
       s.z += s.vz * dt;
-      if (s.z < q.z - 12 || Math.abs(s.x) > this.half + 1) { s.alive = false; continue; }
+      if (s.z < q.z - 12 || s.z > q.z + 45 || Math.abs(s.x) > this.half + 1) { s.alive = false; continue; }
+      if (s.back) {
+        // Chalk sent back by a shout: it hits the first grown-up on its way, or the boss
+        const B = this.boss;
+        if (B.alive && B.active && Math.abs(B.x - s.x) < 1.9 && Math.abs(B.z - s.z) < 1) {
+          s.alive = false;
+          this.emit({ type: 'orbBack', x: s.x, z: s.z });
+          this.hitBoss(Math.max(s.dmg * 2, B.maxHp * 0.012));
+          continue;
+        }
+        for (const e of this.enemies) {
+          if (!e.alive || !e.active || e.inv || Math.abs(e.x - s.x) > e.r + s.r || Math.abs(e.z - s.z) > e.r + s.r) continue;
+          s.alive = false;
+          this.emit({ type: 'orbBack', x: s.x, z: s.z });
+          this.damageEnemy(e, s.dmg);
+          break;
+        }
+        continue;
+      }
       const nx = (s.x - q.x) / (q.Rx + s.r), nz = (s.z - q.z) / (q.Rz + s.r);
       if (nx * nx + nz * nz < 1) {
         s.alive = false;

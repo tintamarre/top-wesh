@@ -88,6 +88,7 @@ function figure({ body, head, legs, teen = false, extra }) {
     add(new THREE.BoxGeometry(0.28, 0.04, 0.02), 0xfafafa, 0, 0.3, 0.145); // tracksuit stripe
     add(new THREE.BoxGeometry(0.06, 0.05, 0.05), 0xffd23a, 0, 0.46, 0.13);
   } else if (extra === 'propeller') add(new THREE.BoxGeometry(0.26, 0.02, 0.05), 0x35d07f, 0, 0.73, 0);
+  else if (extra === 'mum') for (const [x, z] of [[-0.08, 0.05], [0.08, 0.05], [0, -0.06]]) add(new THREE.CylinderGeometry(0.035, 0.035, 0.1, 6).rotateZ(Math.PI / 2), 0xff5fa2, x, 0.7, z); // hair curlers
   return mergeGeometries(parts);
 }
 
@@ -180,6 +181,24 @@ export class Renderer {
       m.visible = false;
       this.scene.add(m);
       this.heroes[id] = m;
+    }
+    // The Mum in her dressing gown, pushing a vacuum cleaner. Built facing +z, like the figures.
+    {
+      const g = (this.mum = new THREE.Group());
+      const body = new THREE.Mesh(figure({ body: 0xff8fc0, head: 0x7a4a2b, legs: 0xb48be0, extra: 'mum' }), vc);
+      body.scale.setScalar(3.4);
+      const part = (geo, mat, x, y, z, rx = 0) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.rotation.x = rx; g.add(o); return o; };
+      part(new THREE.CylinderGeometry(0.07, 0.07, 2.1, 8), this.mats.metal, 0.45, 0.85, 1.25, 1.05); // tube, from the hand to the floor
+      part(new THREE.BoxGeometry(1.5, 0.16, 0.45), this.mats.red, 0.45, 0.09, 2.2); // nozzle
+      part(new THREE.BoxGeometry(0.75, 0.6, 1.1), this.mats.red, -0.95, 0.38, -0.3); // canister, dragged along
+      part(new THREE.CylinderGeometry(0.2, 0.2, 0.8, 10).rotateZ(Math.PI / 2), this.mats.dark, -0.95, 0.2, -0.55);
+      g.add(body);
+      g.traverse((o) => (o.castShadow = true));
+      g.rotation.y = Math.PI;
+      g.scale.setScalar(1.3);
+      g.visible = false;
+      this.scene.add(g);
+      this.mumK = 0;
     }
     // Shield bubble around the squad
     this.bubble = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x55dcff, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
@@ -876,6 +895,31 @@ export class Renderer {
         case 'blocked':
           if (sparks++ < 6) this.burst(e.x, 0.6, e.z, 0x8fe8ff, 4, 3, 0.8, 0.35);
           break;
+        case 'shout':
+          this.ring(e.x, e.z, e.r * 1.5, 0xffe04d);
+          this.ring(e.x, e.z, e.r, 0xffffff);
+          this.float('WESH!', e.x, 2.6, e.z + sim.squad.Rz, 'weapon');
+          this.burst(e.x, 1, e.z, 0xffe04d, 18, 7, 1.1, 0.4);
+          this.shake = Math.max(this.shake, 0.35);
+          break;
+        case 'stagger':
+          this.float('OOPS!', e.x, 5.2, e.z, 'good');
+          this.burst(e.x, 3.2, e.z, 0xffffff, 16, 5, 1.2, 0.5);
+          break;
+        case 'orbBack':
+          this.burst(e.x, 0.6, e.z, 0xfff6e0, 8, 4, 0.9, 0.35);
+          break;
+        case 'mumNear':
+          this.float('MUM IS COMING!', e.x, 2.2, e.z, 'bad small');
+          break;
+        case 'vacuum':
+          this.burst(e.x, 0.3, e.z, 0xcfd3da, 8, 3, 1, 0.4);
+          this.shake = Math.max(this.shake, 0.15);
+          break;
+        case 'mumGone':
+          this.float('MUM GOES HOME', e.x, 3.5, e.z, 'good small');
+          this.burst(e.x, 1.5, e.z, 0xff8fc0, 20, 4, 1.2, 0.6);
+          break;
         case 'hazard':
           if (sparks++ < 6) this.burst(e.x, 0.3, e.z, 0xffe04d, 5, 4, 0.7, 0.3);
           this.shake = Math.max(this.shake, 0.12);
@@ -1047,6 +1091,16 @@ export class Renderer {
     }
     this.lamp.position.set(q.x, 7, -(q.z + 5));
 
+    // The Mum: she waddles, and the camera makes room for her when she gets close
+    const M = sim.mum;
+    this.mum.visible = M.on;
+    const mk = M.on ? Math.max(0, Math.min(1, (9 - sim.mumGap) / 5)) : 0;
+    this.mumK += (mk - this.mumK) * Math.min(1, dt * 3);
+    if (M.on) {
+      this.mum.position.set(M.x, Math.abs(Math.sin(t * 8)) * 0.15, -M.z);
+      this.mum.rotation.z = M.stun > 0 ? Math.sin(t * 30) * 0.12 : Math.sin(t * 8) * 0.05;
+    }
+
     // Shield bubble
     const shielded = sim.shieldT > 0 && q.count > 0;
     this.bubble.visible = shielded && (sim.shieldT > 1.5 || Math.sin(t * 24) > 0);
@@ -1137,13 +1191,13 @@ export class Renderer {
 
     // Camera follows the squad, pulls back for big squads and bosses
     // A long column needs more room than a round squad, and so does a wide road
-    const pull = Math.min(6, Math.max(q.R, q.Rz * 0.75) * 0.5) + (sim.boss.active && sim.boss.alive ? 2 : 0) + (this.portrait ? 1.5 : 0) + Math.max(0, this.half - 6) * 1.6;
+    const pull = Math.min(6, Math.max(q.R, q.Rz * 0.75) * 0.5) + (sim.boss.active && sim.boss.alive ? 2 : 0) + (this.portrait ? 1.5 : 0) + Math.max(0, this.half - 6) * 1.6 + this.mumK * 2.5;
     const cx = q.x * 0.45, cz = -q.z;
     v.set(cx, 11 + pull, cz + 8.5 + pull * 0.6);
     const snap = this.camPos.distanceTo(v) > 25;
     if (snap) this.camPos.copy(v);
     this.camPos.lerp(v, Math.min(1, dt * 4));
-    v.set(q.x * 0.3, 0, cz - 8);
+    v.set(q.x * 0.3, 0, cz - 8 + this.mumK * 4);
     if (snap) this.camLook.copy(v);
     this.camLook.lerp(v, Math.min(1, dt * 5));
     this.camera.position.copy(this.camPos);

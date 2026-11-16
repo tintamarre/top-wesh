@@ -77,6 +77,28 @@ export class Audio {
           else this.hiss(0.05, 0.05, 2400 + Math.random() * 800, 2);
           break;
         }
+        case 'shout':
+          // "WESH!": a voice-like swoop and a breath
+          this.tone(260, 0.32, 'sawtooth', 0.22, 240);
+          this.tone(390, 0.32, 'square', 0.1, 330);
+          this.hiss(0.3, 0.3, 1800, 0.7, 0.05);
+          break;
+        case 'stagger':
+          this.tone(500, 0.3, 'square', 0.1, -380);
+          break;
+        case 'orbBack':
+          this.tone(900, 0.08, 'square', 0.08, -400);
+          break;
+        case 'mumNear':
+          this.tone(740, 0.12, 'square', 0.09); this.tone(554, 0.18, 'square', 0.09, 0, 0.13);
+          break;
+        case 'vacuum':
+          this.hiss(0.45, 0.3, 380, 1.5);
+          this.tone(120, 0.4, 'sawtooth', 0.06, 60);
+          break;
+        case 'mumGone':
+          this.tone(330, 0.15, 'triangle', 0.1, 200);
+          break;
         case 'boom':
           if (now - this.lastBoom > 0.09) { this.lastBoom = now; this.tone(90, 0.25, 'sine', 0.3, -40); this.hiss(0.25, 0.22, 320, 0.6); }
           break;

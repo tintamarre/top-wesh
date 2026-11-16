@@ -1,6 +1,6 @@
 import './style.css';
 import { buildLevel, buildBonus, bossType } from './level.js';
-import { Sim, BOSS_NAMES } from './sim.js';
+import { Sim, BOSS_NAMES, SHOUT_CD } from './sim.js';
 import { Renderer } from './render.js';
 import { Audio } from './audio.js';
 import { UPGRADES, upgradeCost, upgradeStats } from './upgrades.js';
@@ -45,6 +45,7 @@ function newRun(n, isBonus = false) {
   $('hudBoss').textContent = isBonus ? '🏁' : '☠';
   $('bossBar').classList.add('hidden');
   $('bossName').textContent = BOSS_NAMES[level.boss.type];
+  $('btnShout').classList.toggle('hidden', isBonus);
 }
 
 function show(id) {
@@ -137,8 +138,9 @@ function toMenu() {
 function startPlay() {
   mode = 'play';
   show(null);
+  $('hint').textContent = bonus ? '◀ drag to move ▶' : `◀ drag to move ▶  ·  ${matchMedia('(pointer: coarse)').matches ? 'button' : 'Space'}: WESH!`;
   $('hint').style.opacity = 1;
-  hintTimer = 3;
+  hintTimer = 4;
 }
 
 function play() {
@@ -242,6 +244,9 @@ function endLevel() {
 }
 
 // ---------- Input ----------
+const shout = () => { if (mode === 'play') { audio.unlock(); sim.shout(); } };
+// pointerdown, not click: the shout must leave on the touch, while the other thumb keeps steering
+$('btnShout').addEventListener('pointerdown', (e) => { e.preventDefault(); shout(); });
 let drag = null;
 const keys = new Set();
 const isUI = (t) => t.closest('button, a, .panel, .shop');
@@ -263,6 +268,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (mode === 'play') { mode = 'pause'; show('pause'); } else if (mode === 'pause') { mode = 'play'; show(null); }
   }
+  if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'KeyZ') && !e.repeat) { if (mode === 'play') e.preventDefault(); shout(); }
   const go = (e.code === 'Enter' || e.code === 'Space') && ['help', 'levels', 'perks'].every((id) => $(id).classList.contains('hidden'));
   if (go && mode === 'menu') play();
   else if (go && mode === 'end') ($('btnNext').classList.contains('hidden') ? $('btnRetry') : $('btnNext')).click();
@@ -312,6 +318,15 @@ function hud() {
   if (sim.rageT > 0) chip += `  ·  ⚡ ${Math.ceil(sim.rageT)}s`;
   if (sim.shieldT > 0) chip += `  ·  🛡️ ${Math.ceil(sim.shieldT)}s`;
   if (chip !== lastChip) $('hudWeapon').textContent = lastChip = chip;
+  const ready = sim.shoutT <= 0;
+  $('btnShout').classList.toggle('ready', ready);
+  $('shoutFill').style.height = `${ready ? 100 : (1 - sim.shoutT / SHOUT_CD) * 100}%`;
+  const gap = sim.mumGap;
+  $('hudMum').classList.toggle('hidden', !sim.mum.on);
+  if (sim.mum.on) {
+    $('hudMumGap').textContent = gap < 1.3 ? 'is here!' : `${Math.round(gap)} m`;
+    $('hudMum').classList.toggle('near', gap < 5);
+  }
   $('bossBar').classList.toggle('enraged', sim.boss.enraged);
   const B = sim.boss;
   const showBoss = B.active && B.alive;

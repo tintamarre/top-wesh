@@ -49,6 +49,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #bfd9ee; fon
 .hint { position: absolute; left: 50%; bottom: 18%; transform: translateX(-50%); font-family: var(--display); color: #fff; font-size: 26px; -webkit-text-stroke: 1.5px rgba(10, 20, 50, .6); paint-order: stroke fill; animation: sway 1.2s ease-in-out infinite; transition: opacity .4s; }
 @keyframes sway { 0%, 100% { transform: translateX(-60%); } 50% { transform: translateX(-40%); } }
 
+.mum-chip { position: absolute; left: 12px; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 40px); background: rgba(20, 30, 60, .6); color: #fff; font-weight: 900; padding: 6px 12px; border-radius: 10px; font-size: 15px; }
+.mum-chip.near { background: var(--red); animation: blink .25s linear infinite alternate; }
+.shout { pointer-events: auto; position: absolute; right: 14px; bottom: max(16px, env(safe-area-inset-bottom)); width: 92px; height: 92px; border-radius: 50%; border: 4px solid #fff; padding: 0; overflow: hidden; cursor: pointer; background: #7a5a12; box-shadow: 0 5px 0 rgba(0, 0, 0, .3); touch-action: none; }
+.shout i { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; background: linear-gradient(#ffd84d, #f5a800); }
+.shout span { position: relative; font-family: var(--display); font-size: 24px; color: #fff; -webkit-text-stroke: 1.5px #8a4f00; paint-order: stroke fill; display: block; transform: rotate(-8deg); }
+.shout.ready { animation: ready 1s ease-in-out infinite; }
+.shout:not(.ready) span { opacity: .6; }
+.shout:active { transform: scale(.94); }
+@keyframes ready { 50% { transform: scale(1.06); } }
+
 /* Screens */
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; touch-action: pan-y; }
 #menu { align-items: safe center; }
