@@ -13,6 +13,27 @@ const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chro
   '--headless=new', `--remote-debugging-port=${port}`, `--window-size=${size}`, '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
   '--ignore-gpu-blocklist', `--user-data-dir=${profile}`, 'about:blank',
 ], { stdio: 'ignore' });
+
+// Chrome must never outlive this script: it draws on the CPU (swiftshader), so a forgotten
+// instance keeps a page redrawing for days at several hundred % CPU.
+let cleaned = false;
+const cleanup = () => {
+  if (cleaned) return;
+  cleaned = true;
+  try { chrome.kill('SIGKILL'); } catch {}
+  try { rmSync(profile, { recursive: true, force: true }); } catch {}
+};
+process.on('exit', cleanup);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { cleanup(); process.exit(130); });
+process.on('uncaughtException', (e) => { console.error(e); cleanup(); process.exit(1); });
+process.on('unhandledRejection', (e) => { console.error(e); cleanup(); process.exit(1); });
+// Hard limit, in case a CDP call never answers
+const budget = +wait + +extra + 60_000;
+setTimeout(() => { console.error(`shot.mjs: gave up after ${budget} ms`); process.exit(1); }, budget).unref();
+// Watchdog for a SIGKILL of this script (no handler runs then): kills Chrome once our pid is gone
+spawn('/bin/sh', ['-c', `while kill -0 ${process.pid} 2>/dev/null; do sleep 2; done; kill -9 ${chrome.pid} 2>/dev/null`],
+  { detached: true, stdio: 'ignore' }).unref();
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let ws;
 for (let i = 0; i < 50; i++) {
@@ -48,5 +69,4 @@ const shot = await send('Page.captureScreenshot', { format: 'png' });
 writeFileSync(out, Buffer.from(shot.result.data, 'base64'));
 console.log(logs.join('\n'));
 ws.close();
-chrome.kill();
-setTimeout(() => rmSync(profile, { recursive: true, force: true }), 500);
+process.exit(0);
